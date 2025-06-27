@@ -13,32 +13,31 @@ export default function CategoriesPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-  const fetchCategories = async () => {
-    try {
-      setLoading(true)
-      setError(null)
+    const fetchCategories = async () => {
+      try {
+        setLoading(true)
+        setError(null)
 
-      const response = await productService.getCategories()
-      console.log('Categories API Response:', response)
+        const response = await productService.getCategories()
+        console.log('Categories API Response:', response)
 
-      if (response && Array.isArray(response.categories)) {
-        setCategories(response.categories)
-      } else {
-        console.error('Unexpected categories data format:', response)
-        setError('Received categories in unexpected format')
+        // Updated response handling to match the actual API response structure
+        if (response.success && Array.isArray(response.data)) {
+          setCategories(response.data)
+        } else {
+          console.error('Unexpected categories data format:', response)
+          setError('Received categories in unexpected format')
+        }
+      } catch (error) {
+        console.error('Failed to fetch categories:', error)
+        setError('An error occurred while fetching categories')
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error('Failed to fetch categories:', error)
-      setError('An error occurred while fetching categories')
-    } finally {
-      setLoading(false)
     }
-  }
 
-  fetchCategories()
-}, [])
-
-
+    fetchCategories()
+  }, [])
 
   // Debugging: Log current state
   useEffect(() => {

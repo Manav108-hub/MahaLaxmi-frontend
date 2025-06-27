@@ -112,6 +112,24 @@ export interface ApiResponse<T = any> {
   message?: string;
   data?: T;
   error?: string;
+  // Add pagination fields if needed
+  total?: number;
+  page?: number;
+  limit?: number;
+  pages?: number;
+}
+export interface ProductsResponse {
+  products: Product[];
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
+export interface CategoriesResponse {
+  categories: Category[];
 }
 
 export interface AuthenticatedRequest extends Request {

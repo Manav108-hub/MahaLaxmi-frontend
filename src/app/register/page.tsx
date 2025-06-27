@@ -93,7 +93,7 @@ export default function RegisterPage() {
 
       if (response.success) {
         // Registration successful, redirect to dashboard or login
-        router.push('/dashboard')
+        router.push('/categories')
       } else {
         setError(response.message || 'Registration failed')
       }

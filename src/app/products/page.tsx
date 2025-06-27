@@ -39,20 +39,23 @@ export default function ProductsPage() {
           productService.getCategories()
         ])
 
-        if (productsRes && Array.isArray(productsRes.products)) {
+        // Updated products response handling
+        if (Array.isArray(productsRes.products)) {
           setProducts(productsRes.products)
         } else {
           console.error('Unexpected products data format:', productsRes)
           setError('Failed to load products.')
         }
 
-
-        if (Array.isArray(categoriesRes.categories)) {
-          setCategories(categoriesRes.categories)
+        // Updated categories response handling
+        if (categoriesRes.success && Array.isArray(categoriesRes.data)) {
+          setCategories(categoriesRes.data)
+        } else if (Array.isArray(categoriesRes)) {
+          // Fallback for direct array response
+          setCategories(categoriesRes)
         } else {
           console.error('Unexpected categories data format:', categoriesRes)
         }
-
 
         setSelectedCategory(categoryFromUrl)
       } catch (error) {
