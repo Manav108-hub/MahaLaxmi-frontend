@@ -5,22 +5,22 @@ import { useSearchParams } from 'next/navigation'
 import { Product, Category } from '@/lib/types'
 import { productService } from '@/services/productService'
 import ProductCard from '@/components/products/ProductCard'
-import { Card, CardContent } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue
+} from '@/components/ui/select'
 import { Search, Filter } from 'lucide-react'
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [sortBy, setSortBy] = useState<string>('name')
@@ -31,24 +31,38 @@ export default function ProductsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setLoading(true)
+        setError(null)
+
         const [productsRes, categoriesRes] = await Promise.all([
           productService.getProducts(),
           productService.getCategories()
         ])
 
-        if (productsRes.success && productsRes.data) {
-          setProducts(productsRes.data)
+        if (productsRes && Array.isArray(productsRes.products)) {
+          setProducts(productsRes.products)
+        } else {
+          console.error('Unexpected products data format:', productsRes)
+          setError('Failed to load products.')
         }
-        if (categoriesRes.success && categoriesRes.data) {
-          setCategories(categoriesRes.data)
+
+
+        if (Array.isArray(categoriesRes.categories)) {
+          setCategories(categoriesRes.categories)
+        } else {
+          console.error('Unexpected categories data format:', categoriesRes)
         }
-        setSelectedCategory(categoryFromUrl === '' ? 'all' : categoryFromUrl)
+
+
+        setSelectedCategory(categoryFromUrl)
       } catch (error) {
         console.error('Failed to fetch data:', error)
+        setError('An error occurred while fetching products.')
       } finally {
         setLoading(false)
       }
     }
+
     fetchData()
   }, [categoryFromUrl])
 
@@ -67,7 +81,6 @@ export default function ProductsPage() {
           return a.price - b.price
         case 'price-high':
           return b.price - a.price
-        case 'name':
         default:
           return a.name.localeCompare(b.name)
       }
@@ -76,15 +89,14 @@ export default function ProductsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white">
       <div className="container mx-auto px-4 py-16">
+        {/* Search & Filters */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12">
-          <div className="mb-6 md:mb-0">
+          <div>
             <h1 className="text-4xl font-bold gradient-text">Products</h1>
-            <p className="text-gray-600 mt-2">
-              Find all the hardware products you need
-            </p>
+            <p className="text-gray-600 mt-2">Find all the products you need</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-            <div className="relative">
+          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto mt-4 md:mt-0">
+            <div className="relative w-full sm:w-auto">
               <Input
                 type="text"
                 placeholder="Search products..."
@@ -95,12 +107,7 @@ export default function ProductsPage() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             </div>
 
-            <Select
-              value={selectedCategory}
-              onValueChange={(val) => {
-                setSelectedCategory(val)
-              }}
-            >
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
@@ -114,7 +121,7 @@ export default function ProductsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={sortBy} onValueChange={(val) => setSortBy(val)}>
+            <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
@@ -127,13 +134,11 @@ export default function ProductsPage() {
           </div>
         </div>
 
+        {/* Products Display */}
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => (
-              <div
-                key={i}
-                className="glass-effect rounded-lg p-4 animate-pulse"
-              >
+              <div key={i} className="glass-effect rounded-lg p-4 animate-pulse">
                 <div className="h-48 bg-pink-200 rounded mb-4"></div>
                 <div className="h-4 bg-pink-200 rounded mb-2"></div>
                 <div className="h-6 bg-pink-100 rounded"></div>
@@ -143,7 +148,13 @@ export default function ProductsPage() {
         ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard
+                key={product.id}
+                product={{
+                  ...product,
+                  description: product.description || 'No description available',
+                }}
+              />
             ))}
           </div>
         ) : (
@@ -151,12 +162,8 @@ export default function ProductsPage() {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-pink-100 mb-4">
               <Filter className="h-8 w-8 text-pink-500" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-800 mb-2">
-              No products found
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Try adjusting your search or filter criteria
-            </p>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">No products found</h3>
+            <p className="text-gray-600 mb-4">Try adjusting your search or filter criteria</p>
             <Button
               variant="outline"
               className="border-pink-300 text-pink-600 hover:bg-pink-50"

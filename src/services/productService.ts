@@ -1,20 +1,27 @@
+// @/services/productService.ts
 import api from '@/lib/api'
 import { ApiResponse, Product, Category } from '@/lib/types'
 
 export const productService = {
-  async getCategories(): Promise<ApiResponse<Category[]>> {
-    const response = await api.get('/categories')
-    return response.data
-  },
+  async getCategories(): Promise<{ categories: Category[] }> {
+  const response = await api.get('/api/categories')
+  return response.data
+},
 
-  async getProducts(categoryId?: string): Promise<ApiResponse<Product[]>> {
-    const params = categoryId ? { categoryId } : {}
-    const response = await api.get('/products', { params })
-    return response.data
-  },
+
+  // productService.ts
+
+async getProducts(categoryId?: string, search?: string): Promise<{ products: Product[]; pagination: any }> {
+  const params = { categoryId, search }
+  const response = await api.get('/api/products', { params })
+  return response.data
+}
+,
+
+
 
   async getProductById(id: string): Promise<ApiResponse<Product>> {
-    const response = await api.get(`/product/${id}`)
+    const response = await api.get(`/api/product/${id}`)
     return response.data
   },
 
@@ -22,12 +29,12 @@ export const productService = {
     name: string
     description?: string
   }): Promise<ApiResponse<Category>> {
-    const response = await api.post('/category', categoryData)
+    const response = await api.post('/api/category', categoryData)
     return response.data
   },
 
   async createProduct(productData: FormData): Promise<ApiResponse<Product>> {
-    const response = await api.post('/product', productData, {
+    const response = await api.post('/api/product', productData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -36,7 +43,7 @@ export const productService = {
   },
 
   async updateProduct(id: string, productData: FormData): Promise<ApiResponse<Product>> {
-    const response = await api.put(`/product/${id}`, productData, {
+    const response = await api.put(`/api/product/${id}`, productData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

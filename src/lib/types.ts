@@ -153,9 +153,10 @@ export interface AddToCartRequest {
   productId: string;
   quantity: number;
 }
+export type PaymentMethod = 'COD' | 'ONLINE'
 
 export interface CreateOrderRequest {
-  paymentMethod: 'COD' | 'ONLINE';
+  paymentMethod: PaymentMethod;
   shippingAddress: ShippingAddress;
   cartItemIds: string[];
 }
