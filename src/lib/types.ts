@@ -108,6 +108,7 @@ export interface PaymentSession {
 }
 
 export interface ApiResponse<T = any> {
+  categories(categories: any): unknown;
   success: boolean;
   message?: string;
   data?: T;
@@ -119,6 +120,7 @@ export interface ApiResponse<T = any> {
   pages?: number;
 }
 export interface ProductsResponse {
+  [x: string]: any;
   products: Product[];
   pagination?: {
     total: number;
