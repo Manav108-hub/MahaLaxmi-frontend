@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Mail, Lock, User, Phone, ArrowRight, Check } from 'lucide-react'
-import { authService } from '@/services/authService' // Import your auth service
+import { authService } from '@/services/authService'
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -19,7 +19,7 @@ export default function RegisterPage() {
     phone: '',
     password: '',
     confirmPassword: '',
-    username: '' // Added username field to match your API
+    username: ''
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -82,27 +82,47 @@ export default function RegisterPage() {
     }
 
     try {
-      // Use your authService instead of direct fetch
-      const response = await authService.register({
-        name: `${formData.firstName} ${formData.lastName}`.trim(),
-        username: formData.username,
-        password: formData.password,
-        // Add adminToken if needed for admin registration
-        // adminToken: formData.adminToken
-      })
+  console.log('Attempting registration...') // Debug log
+  
+  const response = await authService.register({
+    name: `${formData.firstName} ${formData.lastName}`.trim(),
+    username: formData.username,
+    email: formData.email,
+    phone: formData.phone,
+    password: formData.password
+  })
 
-      if (response.success) {
-        // Registration successful, redirect to dashboard or login
-        router.push('/categories')
-      } else {
-        setError(response.message || 'Registration failed')
-      }
-      
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Registration failed')
-    } finally {
-      setLoading(false)
+  console.log('Registration response:', response) // Debug log
+
+  // Updated validation - check for success indicators
+  if (response?.message?.toLowerCase().includes('successfully') || 
+      response?.success === true ||
+      response?.csrfToken) {
+    
+    // Store authentication data if available
+    if (response.csrfToken) {
+      localStorage.setItem('token', response.csrfToken)
     }
+    if (response.user) {
+      localStorage.setItem('user', JSON.stringify(response.user))
+    }
+    
+    console.log('Registration successful, redirecting to login...') // Debug log
+    
+    // Redirect to login page after successful registration
+    router.push('/login')
+    
+  } else {
+    // Only throw error if it's actually a failure
+    throw new Error(response?.message || 'Registration failed')
+  }
+  
+} catch (err) {
+  console.error('Registration error:', err) // Debug log
+  setError(err instanceof Error ? err.message : 'Registration failed')
+} finally {
+  setLoading(false)
+}
   }
 
   const getPasswordStrength = () => {
@@ -362,6 +382,20 @@ export default function RegisterPage() {
             </div>
           </CardFooter>
         </Card>
+
+        {/* Footer */}
+        <div className="text-center mt-6">
+          <p className="text-sm text-gray-500">
+            By creating an account, you agree to our{' '}
+            <Link href="/terms" className="text-pink-600 hover:underline">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="text-pink-600 hover:underline">
+              Privacy Policy
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )

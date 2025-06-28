@@ -17,6 +17,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react'
 import { authService } from '@/services/authService'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -28,6 +29,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   const router = useRouter()
+  const { login } = useAuth() // Add this line
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -44,18 +46,40 @@ export default function LoginPage() {
     setError('')
 
     try {
+      console.log('Attempting login...') // Debug log
+
+      // Call authService directly to get the raw response
       const response = await authService.login({
         username: formData.username,
         password: formData.password
       })
 
-      if (!response?.success || !response?.data?.token) {
+      console.log('Login response:', response) // Debug log
+
+      // Check for success indicators - be flexible with the response format
+      if (response?.message?.toLowerCase().includes('successful') ||
+        response?.success === true ||
+        response?.csrfToken) {
+
+        // Store authentication data
+        if (response.csrfToken) {
+          localStorage.setItem('token', response.csrfToken)
+        }
+        if (response.user) {
+          localStorage.setItem('user', JSON.stringify(response.user))
+        }
+
+        console.log('Login successful, redirecting...') // Debug log
+
+        // Force a page refresh to ensure the auth state updates properly
+        window.location.href = '/'
+
+      } else {
         throw new Error(response?.message || 'Invalid credentials')
       }
 
-      localStorage.setItem('token', response.data.token)
-      router.push('/')
     } catch (err) {
+      console.error('Login error:', err) // Debug log
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoading(false)

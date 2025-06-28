@@ -7,6 +7,8 @@ export const authService = {
   async register(userData: {
     name: string
     username: string
+    email: string,
+    phone : string,
     password: string
     adminToken?: string
   }): Promise<ApiResponse<{ user: User; csrfToken: string }>> {
