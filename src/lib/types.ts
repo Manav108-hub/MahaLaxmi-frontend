@@ -11,8 +11,24 @@ export interface User {
   state?: string;
   pincode?: string;
   role: 'USER' | 'ADMIN';
-  createdAt: string;
+  createdAt: string;  
   updatedAt: string;
+}
+
+export interface UserWithDetails {
+  id: string;
+  name: string;
+  username: string;
+  isAdmin: boolean;
+  createdAt: string;
+  userDetails: {
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+  } | null;
 }
 
 export interface Category {
@@ -108,12 +124,15 @@ export interface PaymentSession {
 }
 
 export interface ApiResponse<T = any> {
-  categories(categories: any): unknown;
-  success: boolean;
+   success: boolean;
   message?: string;
   data?: T;
   error?: string;
-  // Add pagination fields if needed
+  // Remove these:
+  // csrfToken: any;
+  // user(user: any): string;
+  // categories(categories: any): unknown;
+  // Keep pagination fields if needed
   total?: number;
   page?: number;
   limit?: number;
