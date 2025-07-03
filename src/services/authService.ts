@@ -1,14 +1,23 @@
 // @/services/authService.ts
 import api from '@/lib/api'
-import { ApiResponse, User } from '@/lib/types'
+import { ApiResponse, User, UserWithDetails } from '@/lib/types'
 import Cookies from 'js-cookie'
+
+type ProfileData = {
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+};
 
 export const authService = {
   async register(userData: {
     name: string
     username: string
     email: string,
-    phone : string,
+    phone: string,
     password: string
     adminToken?: string
   }): Promise<ApiResponse<{ user: User; csrfToken: string }>> {
@@ -56,22 +65,27 @@ export const authService = {
     return response.data
   },
 
-  async getProfile(): Promise<ApiResponse<User>> {
-    const response = await api.get('/api/profile')
-    return response.data
-  },
+  // In your authService.ts
+  // In your authService.ts
+async getProfile(): Promise<{
+  data: any; user: User 
+}> {
+  const response = await api.get('/api/profile');
+  return response.data;
+},
 
-  async updateProfile(userData: {
-    email?: string
-    phone?: string
-    address?: string
-    city?: string
-    state?: string
-    pincode?: string
-  }): Promise<ApiResponse<User>> {
-    const response = await api.post('/api/user-details', userData)
-    return response.data
-  },
+  // Update the updateProfile method
+async updateProfile(userData: {
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+}): Promise<ApiResponse<{ user: User }>> {
+  const response = await api.post('/api/user-details', userData);
+  return response.data;
+},
 
   logout() {
     Cookies.remove('token')
