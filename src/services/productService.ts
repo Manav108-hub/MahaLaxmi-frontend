@@ -9,6 +9,29 @@ import {
   CreateProductRequest
 } from '@/lib/types'
 
+// Helper function to clean string data that might have extra quotes
+const cleanString = (str: string | undefined): string => {
+  if (!str) return '';
+  return str.replace(/^["']|["']$/g, '').trim();
+};
+
+// Helper function to sanitize product data
+const sanitizeProduct = (product: any): Product => {
+  return {
+    ...product,
+    name: cleanString(product.name),
+    description: cleanString(product.description),
+    // Ensure stock is a number
+    stock: Number(product.stock) || 0,
+    // Ensure price is a number
+    price: Number(product.price) || 0,
+    // Ensure images is an array
+    images: Array.isArray(product.images) ? product.images : [],
+    // Ensure category exists
+    category: product.category || { id: '', name: 'Uncategorized', createdAt: '', updatedAt: '' }
+  };
+};
+
 export const productService = {
   // Categories
   async getCategories(): Promise<ApiResponse<Category[]>> {
@@ -57,8 +80,12 @@ export const productService = {
         throw new Error(response.data.error || 'Failed to fetch products')
       }
 
+      // Sanitize products
+      const products = response.data.data?.products || []
+      const sanitizedProducts = products.map(sanitizeProduct)
+
       return {
-        products: response.data.data?.products || [],
+        products: sanitizedProducts,
         pagination: response.data.data?.pagination
       }
     } catch (error) {
@@ -75,7 +102,7 @@ export const productService = {
         throw new Error(response.data.error || 'Product not found')
       }
       
-      return response.data.data
+      return sanitizeProduct(response.data.data)
     } catch (error) {
       console.error(`Failed to fetch product with ID ${id}:`, error)
       throw new Error('Failed to fetch product')
@@ -83,20 +110,72 @@ export const productService = {
   },
 
   async getProductBySlug(slug: string): Promise<Product> {
-  try {
-    // Add /api/ to match the backend route
-    const response = await api.get<ApiResponse<Product>>(`/api/products/slug/${slug}`);
-    
-    if (!response.data.success || !response.data.data) {
-      throw new Error(response.data.error || 'Product not found');
+    try {
+      const response = await api.get<ApiResponse<Product>>(`/api/products/slug/${slug}`)
+      
+      console.log('Raw API Response:', response.data) // Debugging log
+      
+      // Handle different response structures
+      let product: any = null
+      
+      if (response.data?.success) {
+        // If response has success field and data is nested
+        if (response.data.data) {
+          // Check if product is nested under data.product
+          if (typeof response.data.data === 'object' && 'product' in response.data.data) {
+            product = (response.data.data as any).product
+          } else {
+            // Product is directly in data
+            product = response.data.data
+          }
+        }
+      } else {
+        // If response doesn't have success field, assume product is in response.data
+        if (response.data && typeof response.data === 'object' && 'id' in response.data) {
+          product = response.data
+        }
+      }
+      
+      console.log('Extracted product:', product)
+      
+      // Validate product data
+      if (!product || !product.id) {
+        throw new Error('Product not found or invalid product data')
+      }
+      
+      // Sanitize the product before validation
+      const sanitizedProduct = sanitizeProduct(product)
+      console.log('Sanitized product:', sanitizedProduct)
+      
+      // Validate required fields after sanitization
+      if (!sanitizedProduct.name || !sanitizedProduct.slug || 
+          typeof sanitizedProduct.price !== 'number' || 
+          typeof sanitizedProduct.stock !== 'number') {
+        console.error('Invalid product data:', {
+          name: sanitizedProduct.name,
+          slug: sanitizedProduct.slug,
+          price: sanitizedProduct.price,
+          priceType: typeof sanitizedProduct.price,
+          stock: sanitizedProduct.stock,
+          stockType: typeof sanitizedProduct.stock
+        })
+        throw new Error('Invalid product data structure')
+      }
+      
+      return sanitizedProduct
+    } catch (error) {
+      console.error(`Failed to fetch product with slug ${slug}:`, error)
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        throw error
+      } else if (typeof error === 'string') {
+        throw new Error(error)
+      } else {
+        throw new Error('Failed to fetch product')
+      }
     }
-    
-    return response.data.data;
-  } catch (error) {
-    console.error(`Failed to fetch product with slug ${slug}:`, error);
-    throw new Error('Failed to fetch product');
-  }
-},
+  },
 
   async createProduct(productData: FormData): Promise<Product> {
     try {
@@ -110,7 +189,7 @@ export const productService = {
         throw new Error(response.data.error || 'Failed to create product')
       }
       
-      return response.data.data
+      return sanitizeProduct(response.data.data)
     } catch (error) {
       console.error('Failed to create product:', error)
       throw new Error('Failed to create product')
@@ -129,7 +208,7 @@ export const productService = {
         throw new Error(response.data.error || 'Failed to update product')
       }
       
-      return response.data.data
+      return sanitizeProduct(response.data.data)
     } catch (error) {
       console.error(`Failed to update product with ID ${id}:`, error)
       throw new Error('Failed to update product')

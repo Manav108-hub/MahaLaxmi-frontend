@@ -6,11 +6,11 @@ import Link from 'next/link'
 
 export default function CartSummary({ 
   cartItems, 
-  getTotalAmount, 
+  totalAmount, // Changed from getTotalAmount to totalAmount
   loading 
 }: { 
   cartItems: any[]
-  getTotalAmount: () => number
+  totalAmount: number // Changed type from function to number
   loading: boolean
 }) {
   return (
@@ -20,7 +20,7 @@ export default function CartSummary({
         <div className="space-y-4">
           <div className="flex justify-between">
             <span className="text-gray-600">Subtotal</span>
-            <span className="font-medium">{formatPrice(getTotalAmount())}</span>
+            <span className="font-medium">{formatPrice(totalAmount)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Shipping</span>
@@ -28,7 +28,7 @@ export default function CartSummary({
           </div>
           <div className="border-t border-pink-200 pt-4 flex justify-between">
             <span className="font-bold">Total</span>
-            <span className="font-bold text-pink-600">{formatPrice(getTotalAmount())}</span>
+            <span className="font-bold text-pink-600">{formatPrice(totalAmount)}</span>
           </div>
         </div>
         <div className="mt-6 space-y-3">

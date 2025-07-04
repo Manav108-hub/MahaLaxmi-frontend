@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Image from 'next/image'
 import {
   ShoppingCart,
@@ -11,6 +11,7 @@ import {
   Truck,
   Shield,
   RotateCcw,
+  AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -23,62 +24,210 @@ import { useCart } from '@/hooks/useCart'
 import { Product } from '@/lib/types'
 import { formatPrice } from '@/lib/utils'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { productService } from '@/services/productService'
 
 interface ProductDetailsProps {
-  product?: Product | null;
-  error?: string | null;
-  loading?: boolean;
+  product?: Product | null
+  error?: string | null
+  loading?: boolean
+  slug?: string
 }
 
+// Helper function to clean string data that might have extra quotes
+const cleanString = (str: string | undefined): string => {
+  if (!str) return '';
+  return str.replace(/^["']|["']$/g, '').trim();
+};
+
+// Helper function to sanitize product data
+const sanitizeProduct = (product: Product): Product => {
+  return {
+    ...product,
+    name: cleanString(product.name),
+    description: cleanString(product.description),
+    // Ensure stock is a number
+    stock: Number(product.stock) || 0,
+    // Ensure price is a number
+    price: Number(product.price) || 0,
+    // Ensure images is an array
+    images: Array.isArray(product.images) ? product.images : [],
+    // Ensure category exists
+    category: product.category || { id: '', name: 'Uncategorized', createdAt: '', updatedAt: '' }
+  };
+};
+
 export default function ProductDetails({ 
-  product, 
-  error, 
-  loading = false 
+  product: initialProduct, 
+  error: initialError, 
+  loading: initialLoading = false,
+  slug
 }: ProductDetailsProps) {
+  const router = useRouter()
+  
+  // Component state
+  const [product, setProduct] = useState<Product | null>(
+    initialProduct ? sanitizeProduct(initialProduct) : null
+  )
+  const [error, setError] = useState<string | null>(initialError || null)
+  const [loading, setLoading] = useState(initialLoading)
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [isWishlisted, setIsWishlisted] = useState(false)
+  
   const { addToCart, loading: cartLoading } = useCart()
-  const router = useRouter()
 
-  const handleAddToCart = async () => {
-    if (!product) return;
+  // Fetch product effect
+  useEffect(() => {
+    const fetchProduct = async () => {
+      // If product is already provided, don't fetch
+      if (initialProduct) {
+        setProduct(sanitizeProduct(initialProduct))
+        return
+      }
+
+      // If no slug provided, return early
+      if (!slug || typeof slug !== 'string') {
+        setError('Invalid product URL')
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+        
+        console.log('Fetching product with slug:', slug)
+        
+        const productData = await productService.getProductBySlug(slug)
+        
+        if (!productData) {
+          throw new Error('Product not found')
+        }
+        
+        // Sanitize the product data before setting it
+        const sanitizedProduct = sanitizeProduct(productData)
+        console.log('Sanitized product data:', sanitizedProduct)
+        
+        setProduct(sanitizedProduct)
+      } catch (err) {
+        console.error('Failed to fetch product:', err)
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load product details'
+        setError(errorMessage)
+        
+        // Redirect to 404 page if product not found
+        if (err instanceof Error && err.message.includes('not found')) {
+          router.replace('/404')
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProduct()
+  }, [slug, router, initialProduct])
+
+  // Reset selected image when product changes
+  useEffect(() => {
+    setSelectedImage(0)
+  }, [product?.id])
+
+  // Memoized derived values
+  const isOutOfStock = useMemo(() => {
+    // console.log('Checking stock:', product?.stock, 'Type:', typeof product?.stock)
+    return !product || product.stock <= 0
+  }, [product])
+  
+  const canAddToCart = useMemo(() => {
+    const result = !isOutOfStock && !cartLoading && product !== null
+    // console.log('Can add to cart:', result, {
+    //   isOutOfStock,
+    //   cartLoading,
+    //   hasProduct: product !== null,
+    //   productStock: product?.stock
+    // })
+    return result
+  }, [isOutOfStock, cartLoading, product])
+  
+  const maxQuantityReached = useMemo(() => 
+    product ? quantity >= product.stock : true, 
+    [quantity, product]
+  )
+
+  const productImages = useMemo(() => 
+    product?.images?.length ? product.images : ['/placeholder-product.jpg'], 
+    [product?.images]
+  )
+
+  // Handlers
+  const handleAddToCart = useCallback(async () => {
+    if (!product || !canAddToCart) {
+      console.log('Cannot add to cart:', { product: !!product, canAddToCart })
+      return
+    }
     
     try {
+      console.log('Adding to cart:', { productId: product.id, quantity })
       await addToCart(product.id, quantity)
       toast.success('Product added to cart')
-    } catch (error) {
+    } catch (err) {
       toast.error('Failed to add product to cart')
-      console.error('Failed to add to cart:', error)
+      console.error('Failed to add to cart:', err)
     }
-  }
+  }, [product, quantity, addToCart, canAddToCart])
 
-  const handleShare = async () => {
+  const handleShare = useCallback(async () => {
+    if (!product) return
+    
     try {
       if (navigator.share) {
         await navigator.share({
-          title: product?.name || '',
-          text: product?.description || '',
+          title: product.name,
+          text: product.description || '',
           url: window.location.href,
         })
       } else {
         await navigator.clipboard.writeText(window.location.href)
         toast.success('Product link copied to clipboard')
       }
-    } catch (error) {
-      console.error('Sharing failed:', error)
+    } catch (err) {
+      console.error('Sharing failed:', err)
+      toast.error('Failed to share product')
     }
-  }
+  }, [product])
 
-  const incrementQuantity = () => {
-    if (!product) return;
+  const incrementQuantity = useCallback(() => {
+    if (!product || maxQuantityReached) return
     setQuantity(prev => Math.min(product.stock, prev + 1))
-  }
+  }, [product, maxQuantityReached])
 
-  const decrementQuantity = () => {
+  const decrementQuantity = useCallback(() => {
     setQuantity(prev => Math.max(1, prev - 1))
-  }
+  }, [])
 
+  const handleImageSelect = useCallback((index: number) => {
+    setSelectedImage(index)
+  }, [])
+
+  const toggleWishlist = useCallback(() => {
+    setIsWishlisted(prev => !prev)
+    toast.success(isWishlisted ? 'Removed from wishlist' : 'Added to wishlist')
+  }, [isWishlisted])
+
+  // Debug logging
+  useEffect(() => {
+    if (product) {
+      console.log('Product state updated:', {
+        id: product.id,
+        name: product.name,
+        stock: product.stock,
+        stockType: typeof product.stock,
+        price: product.price,
+        isOutOfStock,
+        canAddToCart
+      })
+    }
+  }, [product, isOutOfStock, canAddToCart])
+
+  // Loading state
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -89,12 +238,13 @@ export default function ProductDetails({
     )
   }
 
+  // Error state
   if (error || !product) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-16">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-pink-100 mb-4">
-            <Alert className="h-8 w-8 text-pink-500" />
+            <AlertCircle className="h-8 w-8 text-pink-500" />
           </div>
           <h3 className="text-xl font-semibold text-gray-800 mb-2">
             {error || 'Product not found'}
@@ -114,6 +264,7 @@ export default function ProductDetails({
     )
   }
 
+  // Main render
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -121,7 +272,7 @@ export default function ProductDetails({
         <div className="space-y-4">
           <div className="aspect-square relative overflow-hidden rounded-lg border border-gray-200">
             <Image
-              src={product.images?.[selectedImage] || '/placeholder-product.jpg'}
+              src={productImages[selectedImage]}
               alt={product.name}
               fill
               className="object-cover"
@@ -130,18 +281,19 @@ export default function ProductDetails({
             />
           </div>
 
-          {product.images && product.images.length > 1 && (
+          {productImages.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {product.images.map((image, index) => (
+              {productImages.map((image, index) => (
                 <button
                   key={index}
-                  onClick={() => setSelectedImage(index)}
+                  onClick={() => handleImageSelect(index)}
                   className={`relative w-20 h-20 rounded-md overflow-hidden border-2 flex-shrink-0 transition-colors ${
                     selectedImage === index
                       ? 'border-blue-500'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                   aria-label={`View image ${index + 1}`}
+                  aria-current={selectedImage === index ? 'true' : 'false'}
                 >
                   <Image 
                     src={image} 
@@ -169,57 +321,57 @@ export default function ProductDetails({
             {formatPrice(product.price)}
           </div>
 
-          {product.stock > 0 ? (
-            <Alert className="bg-green-50">
-              <AlertDescription className="text-green-600 flex items-center gap-1">
-                <span>✓</span> In stock ({product.stock} available)
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Alert className="bg-red-50">
-              <AlertDescription className="text-red-600 flex items-center gap-1">
-                <span>✗</span> Out of stock
-              </AlertDescription>
-            </Alert>
-          )}
+          <Alert className={isOutOfStock ? "bg-red-50" : "bg-green-50"}>
+            <AlertDescription className={isOutOfStock ? "text-red-600" : "text-green-600"}>
+              {isOutOfStock ? (
+                <span>✗ Out of stock</span>
+              ) : (
+                <span>✓ In stock ({product.stock} available)</span>
+              )}
+            </AlertDescription>
+          </Alert>
 
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={decrementQuantity} 
-              disabled={quantity <= 1}
-              aria-label="Decrease quantity"
-            >
-              <Minus className="w-4 h-4" />
-            </Button>
-            <span className="w-12 text-center font-medium">{quantity}</span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={incrementQuantity} 
-              disabled={quantity >= product.stock}
-              aria-label="Increase quantity"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
+          {!isOutOfStock && (
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={decrementQuantity} 
+                disabled={quantity <= 1}
+                aria-label="Decrease quantity"
+              >
+                <Minus className="w-4 h-4" />
+              </Button>
+              <span className="w-12 text-center font-medium">{quantity}</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={incrementQuantity} 
+                disabled={maxQuantityReached}
+                aria-label="Increase quantity"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
 
           <Button
             className="w-full"
             onClick={handleAddToCart}
-            disabled={product.stock === 0 || cartLoading}
-            aria-label="Add to cart"
+            disabled={!canAddToCart}
+            aria-label={isOutOfStock ? "Out of stock" : "Add to cart"}
           >
             <ShoppingCart className="w-4 h-4 mr-2" />
-            {cartLoading ? 'Adding...' : 'Add to Cart'}
+            {cartLoading ? 'Adding...' : (
+              isOutOfStock ? 'Out of Stock' : 'Add to Cart'
+            )}
           </Button>
 
           <div className="flex gap-2">
             <Button 
               variant="outline" 
               className="flex-1" 
-              onClick={() => setIsWishlisted(!isWishlisted)}
+              onClick={toggleWishlist}
               aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
             >
               <Heart className={`w-4 h-4 mr-2 ${isWishlisted ? 'fill-red-500 text-red-500' : ''}`} />
@@ -254,7 +406,7 @@ export default function ProductDetails({
           <Separator />
 
           <div className="space-y-2">
-            <h3 className="font-semibold text-gray-900">Product Description</h3>
+            <h2 className="font-semibold text-gray-900">Product Description</h2>
             <p className="text-gray-600">
               {product.description || 'No description available.'}
             </p>
