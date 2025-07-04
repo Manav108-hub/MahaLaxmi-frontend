@@ -1,161 +1,253 @@
-'use client'
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { CartItem } from '@/lib/types';
+import { cartService } from '@/services/cartService';
+import { useAuth } from './useAuth';
+import { toast } from 'sonner';
 
-import { useState, useEffect } from 'react'
-import { CartItem } from '@/lib/types'
-import { cartService } from '@/services/cartService'
-import { useAuth } from './useAuth'
-import { toast } from 'sonner'
+interface CartState {
+  cartItems: CartItem[];
+  loading: boolean;
+  error: string | null;
+}
 
 export function useCart() {
-  const [cartItems, setCartItems] = useState<CartItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const { isAuthenticated } = useAuth()
+  const [{ cartItems, loading, error }, setState] = useState<CartState>({
+    cartItems: [],
+    loading: false,
+    error: null,
+  });
 
-  const fetchCart = async () => {
+  const { isAuthenticated } = useAuth();
+
+  console.log('🛒 useCart render - cartItems:', cartItems.length, 'loading:', loading);
+
+  /* ---------- little helpers ---------- */
+  const setLoading = (value: boolean) => {
+    console.log('🔄 Setting loading to:', value);
+    setState(prev => ({ ...prev, loading: value }));
+  };
+  
+  const setError = (msg: string | null) => {
+    console.log('❌ Setting error to:', msg);
+    setState(prev => ({ ...prev, error: msg }));
+  };
+
+  /* ---------- fetch cart ---------- */
+  const fetchCart = useCallback(async (): Promise<void> => {
+    console.log('🔍 fetchCart called - isAuthenticated:', isAuthenticated);
+    
     if (!isAuthenticated) {
-      setCartItems([])
-      return
+      console.log('❌ Not authenticated, clearing cart');
+      setState(prev => ({ ...prev, cartItems: [], loading: false }));
+      return;
     }
 
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
+
     try {
-      const response = await cartService.getCart()
-      if (response.success && response.data) {
-        // Handle both response formats:
-        // 1. Direct array of CartItems
-        // 2. Object with { items: CartItem[], total: number }
-        const items = Array.isArray(response.data) 
-          ? response.data 
-          : response.data.items || []
-        setCartItems(items)
-      } else {
-        setError(response.message || 'Failed to fetch cart')
+      console.log('📡 Calling cartService.getCart()...');
+      const res = await cartService.getCart();
+      console.log('📡 Cart service response:', res);
+      
+      if (!res.success) {
+        throw new Error(res.error ?? 'Failed to fetch cart');
       }
-    } catch (error) {
-      console.error('Failed to fetch cart:', error)
-      setError('Failed to fetch cart. Please try again.')
+
+      // Handle different response formats
+      let items: CartItem[] = [];
+      if (Array.isArray(res.data)) {
+        items = res.data;
+      } else if (res.data && 'items' in res.data) {
+        items = res.data.items;
+      }
+
+      console.log('✅ Setting cart items:', items.length, 'items');
+      setState(prev => ({ ...prev, cartItems: items }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch cart';
+      console.error('❌ fetchCart error:', err);
+      setError(msg);
+      toast.error(msg);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    fetchCart()
-  }, [isAuthenticated])
+    console.log('🔄 useEffect triggered - calling fetchCart');
+    fetchCart();
+  }, [fetchCart]);
 
-  const addToCart = async (productId: string, quantity: number = 1) => {
-    if (!isAuthenticated) {
-      toast.error('Please login to add items to cart')
-      return { success: false, message: 'User not authenticated' }
-    }
-
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await cartService.addToCart(productId, quantity)
-      if (response.success) {
-        await fetchCart()
-        toast.success('Item added to cart successfully')
-      } else {
-        toast.error(response.message || 'Failed to add item to cart')
+  /* ---------- add / update / remove ---------- */
+  const addToCart = useCallback(
+    async (productId: string, quantity: number = 1) => {
+      console.log('➕ addToCart called:', { productId, quantity });
+      
+      if (!isAuthenticated) {
+        toast.error('Please login to add items to cart');
+        return { success: false, message: 'User not authenticated' };
       }
-      return response
-    } catch (error) {
-      console.error('Failed to add to cart:', error)
-      toast.error('Failed to add item to cart')
-      setError('Failed to add item to cart')
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }
 
-  const updateQuantity = async (itemId: string, quantity: number) => {
-    if (!isAuthenticated) {
-      toast.error('Please login to update cart')
-      return { success: false, message: 'User not authenticated' }
-    }
+      try {
+        console.log('📡 Calling cartService.addToCart...');
+        const res = await cartService.addToCart(productId, quantity);
+        console.log('📡 addToCart response:', res);
 
-    if (quantity < 1) {
-      return { success: false, message: 'Quantity must be at least 1' }
-    }
+        if (!res.success) {
+          toast.error(res.message ?? 'Failed to add item to cart');
+          return res;
+        }
 
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await cartService.updateCartItem(itemId, quantity)
-      if (response.success) {
-        await fetchCart()
-        toast.success('Cart updated successfully')
-      } else {
-        toast.error(response.message || 'Failed to update cart')
+        console.log('✅ Add successful, calling fetchCart...');
+        await fetchCart();
+        toast.success('Item added to cart');
+        return res;
+      } catch (err) {
+        console.error('❌ addToCart error:', err);
+        toast.error('Failed to add item to cart');
+        setError('Failed to add item to cart');
+        throw err;
       }
-      return response
-    } catch (error) {
-      console.error('Failed to update cart item:', error)
-      toast.error('Failed to update cart')
-      setError('Failed to update cart')
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }
+    },
+    [isAuthenticated, fetchCart],
+  );
 
-  const removeItem = async (itemId: string) => {
-    if (!isAuthenticated) {
-      toast.error('Please login to remove items from cart')
-      return { success: false, message: 'User not authenticated' }
-    }
-
-    setLoading(true)
-    setError(null)
-    try {
-      const response = await cartService.removeFromCart(itemId)
-      if (response.success) {
-        await fetchCart()
-        toast.success('Item removed from cart')
-      } else {
-        toast.error(response.message || 'Failed to remove item from cart')
+  const updateQuantity = useCallback(
+    async (itemId: string, quantity: number) => {
+      console.log('📝 updateQuantity called:', { itemId, quantity });
+      
+      if (!isAuthenticated) {
+        console.log('❌ Not authenticated');
+        return { success: false, message: 'User not authenticated' };
       }
-      return response
-    } catch (error) {
-      console.error('Failed to remove cart item:', error)
-      toast.error('Failed to remove item from cart')
-      setError('Failed to remove item from cart')
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }
+      
+      if (quantity < 1) {
+        console.log('❌ Invalid quantity');
+        return { success: false, message: 'Quantity must be at least 1' };
+      }
 
-  const getTotalAmount = () => {
-    return cartItems.reduce((total, item) => {
-      return total + (item.product.price * item.quantity)
-    }, 0)
-  }
+      try {
+        console.log('📡 Calling cartService.updateCartItem...');
+        const res = await cartService.updateCartItem(itemId, quantity);
+        console.log('📡 updateCartItem response:', res);
 
-  const getTotalItems = () => {
-    return cartItems.reduce((total, item) => total + item.quantity, 0)
-  }
+        if (!res.success) {
+          toast.error(res.message ?? 'Failed to update cart');
+          return res;
+        }
 
-  const getItemQuantity = (productId: string) => {
-    const item = cartItems.find(item => item.productId === productId)
-    return item ? item.quantity : 0
-  }
+        // Option 1: Update the item locally for immediate UI update
+        console.log('✅ Update successful, updating local state...');
+        setState(prev => ({
+          ...prev,
+          cartItems: prev.cartItems.map(item =>
+            item.id === itemId ? { ...item, quantity } : item
+          )
+        }));
 
+        // Option 2: Also fetch from server to ensure consistency
+        // Comment out the fetchCart call if you want to rely only on local update
+        console.log('🔄 Fetching fresh cart data...');
+        await fetchCart();
+        
+        toast.success('Cart updated');
+        return res;
+      } catch (err) {
+        console.error('❌ updateQuantity error:', err);
+        toast.error('Failed to update cart');
+        setError('Failed to update cart');
+        throw err;
+      }
+    },
+    [isAuthenticated, fetchCart],
+  );
+
+  const removeItem = useCallback(
+    async (itemId: string) => {
+      console.log('🗑️ removeItem called:', { itemId });
+      
+      if (!isAuthenticated) {
+        console.log('❌ Not authenticated');
+        return { success: false, message: 'User not authenticated' };
+      }
+
+      try {
+        console.log('📡 Calling cartService.removeFromCart...');
+        const res = await cartService.removeFromCart(itemId);
+        console.log('📡 removeFromCart response:', res);
+
+        if (!res.success) {
+          toast.error(res.message ?? 'Failed to remove item');
+          return res;
+        }
+
+        // Option 1: Remove item locally for immediate UI update
+        console.log('✅ Remove successful, updating local state...');
+        setState(prev => ({
+          ...prev,
+          cartItems: prev.cartItems.filter(item => item.id !== itemId)
+        }));
+
+        // Option 2: Also fetch from server to ensure consistency
+        console.log('🔄 Fetching fresh cart data...');
+        await fetchCart();
+        
+        toast.success('Item removed');
+        return res;
+      } catch (err) {
+        console.error('❌ removeItem error:', err);
+        toast.error('Failed to remove item from cart');
+        setError('Failed to remove item from cart');
+        throw err;
+      }
+    },
+    [isAuthenticated, fetchCart],
+  );
+
+  /* ---------- derived data ---------- */
+  const totalAmount = useMemo(
+    () =>
+      cartItems.reduce(
+        (sum, item) => sum + (item.product?.price || 0) * item.quantity,
+        0,
+      ),
+    [cartItems],
+  );
+
+  const totalItems = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
+    [cartItems],
+  );
+
+  const getItemQuantity = useCallback(
+    (productId: string) =>
+      cartItems.find(i => i.productId === productId)?.quantity ?? 0,
+    [cartItems],
+  );
+
+  /* ---------- test function ---------- */
+  const forceRefresh = useCallback(() => {
+    console.log('🔄 Force refresh called');
+    fetchCart();
+  }, [fetchCart]);
+
+  /* ---------- public API ---------- */
   return {
     cartItems,
     loading,
     error,
+    /* CRUD */
     addToCart,
     updateQuantity,
     removeItem,
-    getTotalAmount,
-    getTotalItems,
-    getItemQuantity,
     fetchCart,
-    isEmpty: cartItems.length === 0
-  }
+    forceRefresh,
+    /* derived */
+    totalAmount,
+    totalItems,
+    getTotalItems: () => totalItems,
+    getItemQuantity,
+    isEmpty: cartItems.length === 0,
+  };
 }

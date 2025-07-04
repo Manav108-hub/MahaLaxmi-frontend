@@ -42,9 +42,10 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
+  slug: string; // Add this if missing
   description?: string;
   price: number;
-  stock: number;
+  stock: number; // Ensure this is required
   images: string[];
   isActive?: boolean;
   category: Category;

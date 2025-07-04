@@ -8,7 +8,11 @@ export const cartService = {
     return response.data
   },
 
-  async getCart(): Promise<ApiResponse<{ items: CartItem[]; total: number }>> {
+  async getCart(): Promise<ApiResponse<{
+    items: CartItem[]
+    total: number
+    totalItems: number
+  }>> {
     const response = await api.get('/api/cart')
     return response.data
   },
