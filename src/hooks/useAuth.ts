@@ -5,22 +5,22 @@ import { User, UserWithDetails } from '@/lib/types'
 import { authService } from '@/services/authService'
 
 // Helper function to transform UserWithDetails to User for compatibility
-const transformUserWithDetailsToUser = (userWithDetails: UserWithDetails): User => {
-  return {
-    id: userWithDetails.id,
-    name: userWithDetails.name,
-    username: userWithDetails.username,
-    email: userWithDetails.userDetails?.email,
-    phone: userWithDetails.userDetails?.phone,
-    address: userWithDetails.userDetails?.address,
-    city: userWithDetails.userDetails?.city,
-    state: userWithDetails.userDetails?.state,
-    pincode: userWithDetails.userDetails?.pincode,
-    role: userWithDetails.isAdmin ? 'ADMIN' : 'USER',
-    createdAt: userWithDetails.createdAt,
-    updatedAt: userWithDetails.createdAt // Assuming same as createdAt if not available
-  }
-}
+// const transformUserWithDetailsToUser = (userWithDetails: UserWithDetails): User => {
+//   return {
+//     id: userWithDetails.id,
+//     name: userWithDetails.name,
+//     username: userWithDetails.username,
+//     email: userWithDetails.userDetails?.email,
+//     phone: userWithDetails.userDetails?.phone,
+//     address: userWithDetails.userDetails?.address,
+//     city: userWithDetails.userDetails?.city,
+//     state: userWithDetails.userDetails?.state,
+//     pincode: userWithDetails.userDetails?.pincode,
+//     role: userWithDetails.isAdmin ? 'ADMIN' : 'USER',
+//     createdAt: userWithDetails.createdAt,
+//     updatedAt: userWithDetails.createdAt // Assuming same as createdAt if not available
+//   }
+// }
 
 // Helper function to transform User to UserWithDetails
 const transformUserToUserWithDetails = (user: User): UserWithDetails => {

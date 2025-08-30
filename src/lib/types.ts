@@ -124,16 +124,11 @@ export interface PaymentSession {
   updatedAt: string;
 }
 
-export interface ApiResponse<T = any> {
-   success: boolean;
+export interface ApiResponse<T = unknown> {
+  success: boolean;
   message?: string;
   data?: T;
   error?: string;
-  // Remove these:
-  // csrfToken: any;
-  // user(user: any): string;
-  // categories(categories: any): unknown;
-  // Keep pagination fields if needed
   total?: number;
   page?: number;
   limit?: number;

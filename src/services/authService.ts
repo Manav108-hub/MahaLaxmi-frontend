@@ -1,16 +1,7 @@
 // @/services/authService.ts
 import api from '@/lib/api'
-import { ApiResponse, User, UserWithDetails } from '@/lib/types'
+import { ApiResponse, User } from '@/lib/types'
 import Cookies from 'js-cookie'
-
-type ProfileData = {
-  email?: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
-};
 
 export const authService = {
   async register(userData: {
@@ -20,87 +11,52 @@ export const authService = {
     phone: string,
     password: string
     adminToken?: string
-  }): Promise<ApiResponse<{ user: User; csrfToken: string }>> {
+  }): Promise<ApiResponse<{ user: User }>> {
     const response = await api.post('/api/register', userData)
-    if (response.data.success) {
-      const { csrfToken } = response.data.data
-      Cookies.set('csrfToken', csrfToken, {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        expires: 7
-      })
-      localStorage.setItem('csrfToken', csrfToken)
-    }
     return response.data
   },
 
   async login(credentials: {
     username: string
     password: string
-  }): Promise<ApiResponse<{ user: User; csrfToken: string }>> {
+  }): Promise<ApiResponse<{ user: User }>> {
     const response = await api.post('/api/login', credentials)
-    if (response.data.success) {
-      const { csrfToken } = response.data.data
-      Cookies.set('csrfToken', csrfToken, {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        expires: 7
-      })
-      localStorage.setItem('csrfToken', csrfToken)
-    }
     return response.data
   },
 
-  async refreshToken(): Promise<ApiResponse<{ csrfToken: string }>> {
+  async refreshToken(): Promise<ApiResponse<{ user: User }>> {
     const response = await api.post('/api/refresh-token')
-    if (response.data.success) {
-      const { csrfToken } = response.data.data
-      Cookies.set('csrfToken', csrfToken, {
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        expires: 7
-      })
-      localStorage.setItem('csrfToken', csrfToken)
-    }
     return response.data
   },
 
-  // In your authService.ts
-  // In your authService.ts
-async getProfile(): Promise<{
-  data: any; user: User 
-}> {
-  const response = await api.get('/api/profile');
-  return response.data;
-},
+  async getProfile(): Promise<{ user: User }> {
+    const response = await api.get('/api/profile');
+    return response.data;
+  },
 
-  // Update the updateProfile method
-async updateProfile(userData: {
-  email?: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
-}): Promise<ApiResponse<{ user: User }>> {
-  const response = await api.post('/api/user-details', userData);
-  return response.data;
-},
+  async updateProfile(userData: {
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+  }): Promise<ApiResponse<{ user: User }>> {
+    const response = await api.post('/api/user-details', userData);
+    return response.data;
+  },
 
   logout() {
-    Cookies.remove('token')
-    Cookies.remove('csrfToken')
-    localStorage.removeItem('csrfToken')
+    // Remove CSRF-related code since backend doesn't use it anymore
+    Cookies.remove('accessToken') // Change from 'token' to 'accessToken' to match backend
     api.post('/api/logout').finally(() => {
       window.location.href = '/login'
     })
   },
 
   isAuthenticated(): boolean {
-    return !!Cookies.get('token')
+    return !!Cookies.get('accessToken') // Change from 'token' to 'accessToken'
   },
 
-  getCSRFToken(): string | null {
-    return Cookies.get('csrfToken') || localStorage.getItem('csrfToken')
-  }
+  // Remove CSRF token methods since they're not used anymore
 }

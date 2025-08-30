@@ -1,3 +1,4 @@
+// @/lib/api.ts
 import axios from 'axios'
 import Cookies from 'js-cookie'
 
@@ -12,25 +13,11 @@ const api = axios.create({
   withCredentials: true // Required for cookies to be sent automatically
 })
 
-// Request interceptor to add auth token and CSRF protection
+// Request interceptor - removed CSRF handling since backend doesn't use it
 api.interceptors.request.use(
   (config) => {
-    // Get token from cookies
-    const token = Cookies.get('token')
-    
-    // Get CSRF token from cookies or memory
-    const csrfToken = Cookies.get('csrfToken') || localStorage.getItem('csrfToken')
-
-    // Add Authorization header if token exists
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-
-    // Add CSRF token for state-changing requests
-    if (csrfToken && ['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
-      config.headers['X-CSRF-Token'] = csrfToken
-    }
-
+    // The accessToken is automatically sent via httpOnly cookies
+    // No need to manually add Authorization header
     return config
   },
   (error) => {
@@ -41,14 +28,6 @@ api.interceptors.request.use(
 // Response interceptor for error handling and token refresh
 api.interceptors.response.use(
   (response) => {
-    // Store CSRF token if received in response
-    if (response.data?.csrfToken) {
-      Cookies.set('csrfToken', response.data.csrfToken, { 
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax'
-      })
-      localStorage.setItem('csrfToken', response.data.csrfToken)
-    }
     return response
   },
   async (error) => {
@@ -60,29 +39,12 @@ api.interceptors.response.use(
       
       try {
         // Attempt to refresh token
-        const response = await axios.post(`${API_BASE_URL}/refresh-token`, {}, {
-          withCredentials: true
-        })
-        
-        const { csrfToken } = response.data
-        
-        // Store new CSRF token
-        if (csrfToken) {
-          Cookies.set('csrfToken', csrfToken, {
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax'
-          })
-          localStorage.setItem('csrfToken', csrfToken)
-        }
+        await api.post('/api/refresh-token')
         
         // Retry original request
         return api(originalRequest)
       } catch (refreshError) {
-        // If refresh fails, clear tokens and redirect to login
-        Cookies.remove('token')
-        Cookies.remove('csrfToken')
-        localStorage.removeItem('csrfToken')
-        
+        // If refresh fails, redirect to login
         if (typeof window !== 'undefined') {
           window.location.href = '/login'
         }
@@ -90,39 +52,13 @@ api.interceptors.response.use(
       }
     }
     
-    // Handle other errors
-    if (error.response?.status === 403) {
-      // CSRF token mismatch - try to get a new one
-      if (typeof window !== 'undefined') {
-        window.location.reload()
-      }
-    }
-    
     return Promise.reject(error)
   }
 )
 
-// Helper functions for auth flow
-export const setAuthTokens = (token: string, csrfToken: string) => {
-  Cookies.set('token', token, {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax'
-  })
-  Cookies.set('csrfToken', csrfToken, {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax'
-  })
-  localStorage.setItem('csrfToken', csrfToken)
-}
-
-export const clearAuthTokens = () => {
-  Cookies.remove('token')
-  Cookies.remove('csrfToken')
-  localStorage.removeItem('csrfToken')
-}
-
+// Helper functions for auth flow - simplified since no manual token management needed
 export const isAuthenticated = () => {
-  return !!Cookies.get('token')
+  return !!Cookies.get('accessToken')
 }
 
 export default api

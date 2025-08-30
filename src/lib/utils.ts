@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { Product } from "./types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -20,6 +21,6 @@ export function generateSlug(text: string): string {
     .trim()
 }
 
-export function getProductFromSlug(slug: string, products: any[]): any {
+export function getProductFromSlug(slug: string, products: Product[]): Product | undefined {
   return products.find(product => generateSlug(product.name) === slug)
 }
