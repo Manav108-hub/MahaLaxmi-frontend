@@ -1,26 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { User, UserWithDetails } from '@/lib/types'
 import { authService } from '@/services/authService'
-
-// Helper function to transform UserWithDetails to User for compatibility
-// const transformUserWithDetailsToUser = (userWithDetails: UserWithDetails): User => {
-//   return {
-//     id: userWithDetails.id,
-//     name: userWithDetails.name,
-//     username: userWithDetails.username,
-//     email: userWithDetails.userDetails?.email,
-//     phone: userWithDetails.userDetails?.phone,
-//     address: userWithDetails.userDetails?.address,
-//     city: userWithDetails.userDetails?.city,
-//     state: userWithDetails.userDetails?.state,
-//     pincode: userWithDetails.userDetails?.pincode,
-//     role: userWithDetails.isAdmin ? 'ADMIN' : 'USER',
-//     createdAt: userWithDetails.createdAt,
-//     updatedAt: userWithDetails.createdAt // Assuming same as createdAt if not available
-//   }
-// }
 
 // Helper function to transform User to UserWithDetails
 const transformUserToUserWithDetails = (user: User): UserWithDetails => {
@@ -44,72 +26,92 @@ const transformUserToUserWithDetails = (user: User): UserWithDetails => {
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const initializationRef = useRef(false)
 
-  // Function to check and load user from localStorage
+  // Function to check and load user from localStorage (remove token dependency)
   const loadUserFromStorage = () => {
     try {
       const storedUser = localStorage.getItem('user')
-      const token = localStorage.getItem('token')
       
-      if (storedUser && token) {
+      if (storedUser) {
         const userData = JSON.parse(storedUser)
         setUser(userData)
         return userData
       }
     } catch (error) {
       console.error('Error loading user from storage:', error)
+      // Clean up corrupted data
+      localStorage.removeItem('user')
     }
     return null
   }
 
   useEffect(() => {
-    const fetchUser = async () => {
+    // Prevent multiple initializations
+    if (initializationRef.current) return
+    initializationRef.current = true
+
+    const initializeAuth = async () => {
+      console.log('🔐 Initializing auth...')
+      
       // First check localStorage for immediate user data
       const storedUser = loadUserFromStorage()
       
       if (storedUser) {
+        console.log('👤 Found stored user:', storedUser.username)
         setLoading(false)
-        // Optionally verify with server
-        if (authService.isAuthenticated()) {
-          try {
-            const response = await authService.getProfile()
-            // Updated to handle the new API response structure: { user: User }
-            if (response.user) {
-              setUser(response.user)
-              localStorage.setItem('user', JSON.stringify(response.user))
-            }
-          } catch (error) {
-            console.error('Failed to fetch user profile:', error)
-            // If server verification fails, clear stored data
-            localStorage.removeItem('user')
-            localStorage.removeItem('token')
-            setUser(null)
-          }
-        }
-      } else if (authService.isAuthenticated()) {
-        // If no stored user but token exists, fetch from server
+        
+        // Verify with server in background
         try {
-          const response = await authService.getProfile()
-          // Updated to handle the new API response structure: { user: User }
-          if (response.user) {
+          console.log('🔍 Verifying stored user with server...')
+          const response = await authService.getCurrentUser()
+          
+          if (response.success && response.user) {
+            console.log('✅ User verified, updating data')
             setUser(response.user)
             localStorage.setItem('user', JSON.stringify(response.user))
           }
         } catch (error) {
-          console.error('Failed to fetch user profile:', error)
+          console.error('❌ Server verification failed:', error)
+          // If server verification fails, clear stored data
+          localStorage.removeItem('user')
+          setUser(null)
+        }
+      } else {
+        // No stored user, try to get from server
+        try {
+          console.log('🔍 No stored user, checking server...')
+          const response = await authService.getCurrentUser()
+          
+          if (response.success && response.user) {
+            console.log('✅ Got user from server:', response.user.username)
+            setUser(response.user)
+            localStorage.setItem('user', JSON.stringify(response.user))
+          } else {
+            console.log('ℹ️ No authenticated user found')
+          }
+        } catch (error) {
+          console.log('ℹ️ Not authenticated or server error')
+          // This is expected when not logged in
         }
       }
       
       setLoading(false)
+      console.log('🔐 Auth initialization complete')
     }
 
-    fetchUser()
+    initializeAuth()
 
     // Listen for storage changes (useful for multiple tabs)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'user' || e.key === 'token') {
+      if (e.key === 'user') {
         if (e.newValue) {
-          loadUserFromStorage()
+          try {
+            const userData = JSON.parse(e.newValue)
+            setUser(userData)
+          } catch (error) {
+            console.error('Error parsing user data from storage:', error)
+          }
         } else {
           setUser(null)
         }
@@ -118,24 +120,26 @@ export function useAuth() {
 
     window.addEventListener('storage', handleStorageChange)
     return () => window.removeEventListener('storage', handleStorageChange)
-  }, [])
+  }, []) // Empty dependency array - only run once
 
-  const login = async (credentials: { username: string; password: string }) => {
-    const response = await authService.login(credentials)
-    if (response.success && response.data) {
-      setUser(response.data.user)
-      // Ensure user data is stored in localStorage
-      localStorage.setItem('user', JSON.stringify(response.data.user))
-    }
-    return response
+  const login = (userData: User) => {
+    console.log('🔐 Logging in user:', userData.username)
+    setUser(userData)
+    localStorage.setItem('user', JSON.stringify(userData))
   }
 
   const logout = () => {
+    console.log('🔐 Logging out user')
     authService.logout()
     setUser(null)
-    // Clear localStorage
     localStorage.removeItem('user')
-    localStorage.removeItem('token')
+    // Note: Don't remove 'token' as we use httpOnly cookies
+  }
+
+  const updateUser = (updatedUser: User) => {
+    console.log('🔐 Updating user data')
+    setUser(updatedUser)
+    localStorage.setItem('user', JSON.stringify(updatedUser))
   }
 
   // Add a method to get UserWithDetails format for components that need it
@@ -144,19 +148,13 @@ export function useAuth() {
     return transformUserToUserWithDetails(user)
   }
 
-  // Add a method to update user data (useful after profile updates)
-  const updateUser = (updatedUser: User) => {
-    setUser(updatedUser)
-    localStorage.setItem('user', JSON.stringify(updatedUser))
-  }
-
   return {
     user,
     loading,
     login,
     logout,
-    updateUser, // Export this for profile update scenarios
+    updateUser,
     isAuthenticated: !!user,
-    getUserWithDetails // Export this for components that need UserWithDetails format
+    getUserWithDetails
   }
 }

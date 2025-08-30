@@ -13,6 +13,22 @@ const api = axios.create({
   withCredentials: true // Required for cookies to be sent automatically
 })
 
+// Track if we're currently refreshing to prevent multiple refresh attempts
+let isRefreshing = false
+let failedQueue: Array<{ resolve: Function; reject: Function }> = []
+
+const processQueue = (error: any, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+    } else {
+      resolve(token)
+    }
+  })
+  
+  failedQueue = []
+}
+
 // Request interceptor - removed CSRF handling since backend doesn't use it
 api.interceptors.request.use(
   (config) => {
@@ -35,20 +51,60 @@ api.interceptors.response.use(
     
     // Handle 401 Unauthorized errors
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
       
-      try {
-        // Attempt to refresh token
-        await api.post('/api/refresh-token')
-        
-        // Retry original request
-        return api(originalRequest)
-      } catch (refreshError) {
-        // If refresh fails, redirect to login
+      // Don't try to refresh token for login, register, or refresh-token endpoints
+      const skipRefreshRoutes = ['/api/login', '/api/register', '/api/refresh-token']
+      if (skipRefreshRoutes.includes(originalRequest.url)) {
+        return Promise.reject(error)
+      }
+
+      // Check if we have an access token cookie - if not, user is logged out
+      const hasAccessToken = document.cookie.includes('accessToken=')
+      if (!hasAccessToken) {
+        // No token means user is logged out, redirect to login
         if (typeof window !== 'undefined') {
           window.location.href = '/login'
         }
+        return Promise.reject(error)
+      }
+
+      if (isRefreshing) {
+        // If we're already refreshing, queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then(() => {
+          return api(originalRequest)
+        }).catch((err) => {
+          return Promise.reject(err)
+        })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        // Attempt to refresh token
+        const response = await api.post('/api/refresh-token')
+        
+        if (response.data?.success) {
+          processQueue(null)
+          // Retry original request
+          return api(originalRequest)
+        } else {
+          throw new Error('Token refresh failed')
+        }
+      } catch (refreshError) {
+        // If refresh fails, clear queue and redirect to login
+        processQueue(refreshError)
+        
+        if (typeof window !== 'undefined') {
+          // Clear any auth-related data
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+        }
         return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
     
@@ -56,9 +112,16 @@ api.interceptors.response.use(
   }
 )
 
-// Helper functions for auth flow - simplified since no manual token management needed
-export const isAuthenticated = () => {
-  return !!Cookies.get('accessToken')
+// Helper function to check if user has a valid session
+export const hasValidSession = () => {
+  return document.cookie.includes('accessToken=')
+}
+
+// Helper function to clear auth state
+export const clearAuthState = () => {
+  localStorage.removeItem('user')
+  // Note: We can't clear httpOnly cookies from JavaScript
+  // The backend will clear them on logout
 }
 
 export default api

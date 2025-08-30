@@ -16,15 +16,21 @@ import { useCart } from '@/hooks/useCart'
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { user, logout, isAuthenticated } = useAuth()
+  const { logout, isAuthenticated } = useAuth()
   const { getTotalItems } = useCart()
 
-  const navigation = [
-    { name: 'Home', href: '/' },
-    { name: 'About', href: '/about' },
-    { name: 'Categories', href: '/categories' },
-    { name: 'Products', href: '/products' },
-  ]
+  type NavItem = {
+  name: string
+  href: string
+}
+
+  
+const navigation: NavItem[] = [
+  { name: 'Home', href: '/' },
+  { name: 'About', href: '/about' },
+  { name: 'Categories', href: '/categories' },
+  { name: 'Products', href: '/products' },
+]
 
   return (
     <header className="sticky top-0 z-50 glass-effect border-b border-pink-200">

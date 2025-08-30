@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { User, Mail, Phone, MapPin, Calendar, Shield, Edit3, Save, X } from 'lucide-react'
+import { User, Mail, MapPin, Calendar, Shield, Edit3, Save, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { authService } from '@/services/authService'
 
@@ -15,7 +15,7 @@ export default function ProfilePage() {
   const { user, loading, updateUser } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ProfileForm>({
     email: '',
     phone: '',
     address: '',
@@ -24,6 +24,14 @@ export default function ProfilePage() {
     pincode: ''
   })
 
+  type ProfileForm = {
+    email: string
+    phone: string
+    address: string
+    city: string
+    state: string
+    pincode: string
+  }
   // Memoized fetch function
   const fetchUserDetails = useCallback(async () => {
     try {
@@ -39,7 +47,7 @@ export default function ProfilePage() {
           pincode: response.data.user.pincode || ''
         })
       }
-    } catch (error) {
+    } catch (error : unknown) {
       console.error('Failed to fetch user details:', error)
     }
   }, [updateUser])
@@ -63,12 +71,12 @@ export default function ProfilePage() {
     try {
       setIsSaving(true)
       const response = await authService.updateProfile(formData)
-      
+
       if (response.data?.user) {
         updateUser(response.data.user)
         setIsEditing(false)
       }
-    } catch (error) {
+    } catch (error : unknown) {
       console.error('Update failed:', error)
     } finally {
       setIsSaving(false)
@@ -150,7 +158,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex gap-2">
                   {!isEditing ? (
-                    <Button 
+                    <Button
                       onClick={() => setIsEditing(true)}
                       className="bg-pink-500 hover:bg-pink-600 text-white"
                     >
@@ -159,7 +167,7 @@ export default function ProfilePage() {
                     </Button>
                   ) : (
                     <>
-                      <Button 
+                      <Button
                         onClick={handleSave}
                         disabled={isSaving}
                         className="bg-pink-500 hover:bg-pink-600 text-white"
@@ -167,7 +175,7 @@ export default function ProfilePage() {
                         <Save className="h-4 w-4 mr-2" />
                         {isSaving ? 'Saving...' : 'Save'}
                       </Button>
-                      <Button 
+                      <Button
                         onClick={handleCancel}
                         variant="outline"
                         className="border-pink-200 text-pink-700 hover:bg-pink-50"

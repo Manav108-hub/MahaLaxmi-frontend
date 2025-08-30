@@ -1,14 +1,13 @@
 // @/services/authService.ts
 import api from '@/lib/api'
 import { ApiResponse, User } from '@/lib/types'
-import Cookies from 'js-cookie'
 
 export const authService = {
   async register(userData: {
     name: string
     username: string
-    email: string,
-    phone: string,
+    email: string
+    phone: string
     password: string
     adminToken?: string
   }): Promise<ApiResponse<{ user: User }>> {
@@ -20,43 +19,67 @@ export const authService = {
     username: string
     password: string
   }): Promise<ApiResponse<{ user: User }>> {
-    const response = await api.post('/api/login', credentials)
+    const response = await api.post('/api/login', credentials, {
+      withCredentials: true // Important: This ensures cookies are sent/received
+    })
     return response.data
   },
 
   async refreshToken(): Promise<ApiResponse<{ user: User }>> {
-    const response = await api.post('/api/refresh-token')
+    const response = await api.post('/api/refresh-token', {}, {
+      withCredentials: true
+    })
     return response.data
   },
 
-  async getProfile(): Promise<{ user: User }> {
-    const response = await api.get('/api/profile');
-    return response.data;
+  async getProfile(): Promise<ApiResponse<{ user: User }>> {
+    const response = await api.get('/api/profile', {
+      withCredentials: true
+    })
+    return response.data
   },
 
   async updateProfile(userData: {
-    email?: string;
-    phone?: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    pincode?: string;
+    email?: string
+    phone?: string
+    address?: string
+    city?: string
+    state?: string
+    pincode?: string
   }): Promise<ApiResponse<{ user: User }>> {
-    const response = await api.post('/api/user-details', userData);
-    return response.data;
-  },
-
-  logout() {
-    // Remove CSRF-related code since backend doesn't use it anymore
-    Cookies.remove('accessToken') // Change from 'token' to 'accessToken' to match backend
-    api.post('/api/logout').finally(() => {
-      window.location.href = '/login'
+    const response = await api.post('/api/user-details', userData, {
+      withCredentials: true
     })
+    return response.data
   },
 
-  isAuthenticated(): boolean {
-    return !!Cookies.get('accessToken') // Change from 'token' to 'accessToken'
+  async logout(): Promise<void> {
+    try {
+      await api.post('/api/logout', {}, {
+        withCredentials: true
+      })
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      // Always redirect to login after logout attempt
+      window.location.href = '/login'
+    }
   },
 
-  // Remove CSRF token methods since they're not used anymore
+  async getCurrentUser(): Promise<ApiResponse<User>> {
+    const response = await api.get('/api/me', { // Fixed: Changed from '/api/auth/me' to '/api/me'
+      withCredentials: true
+    })
+    return response.data
+  },
+
+  // Check if user is authenticated by trying to get current user
+  async isAuthenticated(): Promise<boolean> {
+    try {
+      await this.getCurrentUser()
+      return true
+    } catch {
+      return false
+    }
+  }
 }

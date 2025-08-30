@@ -1,6 +1,7 @@
 // --- TypeScript Interfaces (lib/types.ts) ---
 
 export interface User {
+  role: string;
   id: string;
   name: string;
   username: string;
@@ -10,9 +11,9 @@ export interface User {
   city?: string;
   state?: string;
   pincode?: string;
-  role: 'USER' | 'ADMIN';
+  isAdmin: boolean; // Changed from role: 'USER' | 'ADMIN' to match your backend
   createdAt: string;  
-  updatedAt: string;
+  updatedAt?: string; // Made optional since backend might not always return it
 }
 
 export interface UserWithDetails {
@@ -42,10 +43,10 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
-  slug: string; // Add this if missing
+  slug: string;
   description?: string;
   price: number;
-  stock: number; // Ensure this is required
+  stock: number;
   images: string[];
   isActive?: boolean;
   category: Category;
@@ -124,18 +125,38 @@ export interface PaymentSession {
   updatedAt: string;
 }
 
+// FIXED: Corrected ApiResponse interface
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;
   error?: string;
+  user?: User; // FIXED: This should be User type, not boolean
   total?: number;
   page?: number;
   limit?: number;
   pages?: number;
 }
+
+// Specific response types based on your backend responses
+export interface LoginResponse {
+  success: boolean;
+  message: string;
+  user: User;
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  message: string;
+  user: User;
+}
+
+export interface ProfileResponse {
+  success: boolean;
+  user: User;
+}
+
 export interface ProductsResponse {
-  [x: string]: any;
   products: Product[];
   pagination?: {
     total: number;
@@ -153,7 +174,7 @@ export interface AuthenticatedRequest extends Request {
   user: {
     id: string;
     username: string;
-    role: 'USER' | 'ADMIN';
+    isAdmin: boolean; // Changed from role to isAdmin
   };
 }
 
@@ -188,6 +209,7 @@ export interface AddToCartRequest {
   productId: string;
   quantity: number;
 }
+
 export type PaymentMethod = 'COD' | 'ONLINE'
 
 export interface CreateOrderRequest {

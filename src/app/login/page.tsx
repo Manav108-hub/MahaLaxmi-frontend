@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react'
 import { authService } from '@/services/authService'
 import { useAuth } from '@/hooks/useAuth'
+import { clearAuthState } from '@/lib/api'
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -29,7 +30,12 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   const router = useRouter()
-  const { login } = useAuth() // Add this line
+  const { login } = useAuth()
+
+  // Clear any stale auth state on mount
+  useEffect(() => {
+    clearAuthState()
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -48,7 +54,7 @@ export default function LoginPage() {
     try {
       console.log('Attempting login...') // Debug log
 
-      // Call authService directly to get the raw response
+      // Call authService to handle login
       const response = await authService.login({
         username: formData.username,
         password: formData.password
@@ -56,31 +62,40 @@ export default function LoginPage() {
 
       console.log('Login response:', response) // Debug log
 
-      // Check for success indicators - be flexible with the response format
-      if (response?.message?.toLowerCase().includes('successful') ||
-        response?.success === true ||
-        response?.csrfToken) {
-
-        // Store authentication data
-        if (response.csrfToken) {
-          localStorage.setItem('token', response.csrfToken)
-        }
-        if (response.user) {
-          localStorage.setItem('user', JSON.stringify(response.user))
+      // Check for success - your backend returns { success: true, message: '...', user: {...} }
+      if (response.success && response.user) {
+        console.log('Login successful, updating auth context...') // Debug log
+        
+        // Update auth context with user data
+        if (login && typeof login === 'function') {
+          login(response.user)
         }
 
-        console.log('Login successful, redirecting...') // Debug log
+        // Store user data in localStorage for persistence
+        localStorage.setItem('user', JSON.stringify(response.user))
 
-        // Force a page refresh to ensure the auth state updates properly
-        window.location.href = '/'
+        console.log('Redirecting to home...') // Debug log
+
+        // Navigate to home page
+        router.push('/')
 
       } else {
-        throw new Error(response?.message || 'Invalid credentials')
+        throw new Error(response.message || 'Login failed')
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Login error:', err) // Debug log
-      setError(err instanceof Error ? err.message : 'Login failed')
+      
+      // Handle different error formats
+      if (err.response?.data?.error) {
+        setError(err.response.data.error)
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message)
+      } else if (err.message) {
+        setError(err.message)
+      } else {
+        setError('Login failed. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
