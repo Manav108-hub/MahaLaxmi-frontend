@@ -4,6 +4,12 @@ import { useState, useEffect, useRef } from 'react'
 import { User, UserWithDetails } from '@/lib/types'
 import { authService } from '@/services/authService'
 
+// Helper function to check if we have authentication cookies
+const hasAuthCookies = (): boolean => {
+  if (typeof document === 'undefined') return false
+  return document.cookie.includes('accessToken=')
+}
+
 // Helper function to transform User to UserWithDetails
 const transformUserToUserWithDetails = (user: User): UserWithDetails => {
   return {
@@ -27,8 +33,9 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const initializationRef = useRef(false)
+  const isInitializing = useRef(false)
 
-  // Function to check and load user from localStorage (remove token dependency)
+  // Function to check and load user from localStorage
   const loadUserFromStorage = () => {
     try {
       const storedUser = localStorage.getItem('user')
@@ -40,64 +47,93 @@ export function useAuth() {
       }
     } catch (error) {
       console.error('Error loading user from storage:', error)
-      // Clean up corrupted data
       localStorage.removeItem('user')
     }
     return null
   }
 
+  // Clear auth state completely
+  const clearAuthState = () => {
+    console.log('🧹 Clearing auth state')
+    setUser(null)
+    localStorage.removeItem('user')
+    // Note: httpOnly cookies are cleared by backend
+  }
+
   useEffect(() => {
     // Prevent multiple initializations
-    if (initializationRef.current) return
+    if (initializationRef.current || isInitializing.current) return
     initializationRef.current = true
+    isInitializing.current = true
 
     const initializeAuth = async () => {
       console.log('🔐 Initializing auth...')
       
-      // First check localStorage for immediate user data
-      const storedUser = loadUserFromStorage()
-      
-      if (storedUser) {
-        console.log('👤 Found stored user:', storedUser.username)
-        setLoading(false)
+      try {
+        // First check if we have auth cookies
+        if (!hasAuthCookies()) {
+          console.log('❌ No auth cookies found, user not authenticated')
+          clearAuthState()
+          setLoading(false)
+          return
+        }
+
+        // Check localStorage first for immediate user data
+        const storedUser = loadUserFromStorage()
         
-        // Verify with server in background
-        try {
-          console.log('🔍 Verifying stored user with server...')
-          const response = await authService.getCurrentUser()
+        if (storedUser) {
+          console.log('👤 Found stored user:', storedUser.username)
+          // Set loading to false immediately to prevent UI flickering
+          setLoading(false)
           
-          if (response.success && response.user) {
-            console.log('✅ User verified, updating data')
-            setUser(response.user)
-            localStorage.setItem('user', JSON.stringify(response.user))
-          }
-        } catch (error) {
-          console.error('❌ Server verification failed:', error)
-          // If server verification fails, clear stored data
-          localStorage.removeItem('user')
-          setUser(null)
-        }
-      } else {
-        // No stored user, try to get from server
-        try {
-          console.log('🔍 No stored user, checking server...')
-          const response = await authService.getCurrentUser()
+          // Verify with server in background (don't await to avoid blocking UI)
+          authService.getCurrentUser()
+            .then(response => {
+              if (response.success && response.data) {
+                console.log('✅ User verified, updating data')
+                setUser(response.data)
+                localStorage.setItem('user', JSON.stringify(response.data))
+              } else {
+                console.log('❌ Server verification failed, clearing stored data')
+                clearAuthState()
+              }
+            })
+            .catch(error => {
+              console.error('❌ Server verification failed:', error)
+              // Only clear if it's a real auth error, not network issues
+              if (error.response?.status === 401) {
+                clearAuthState()
+              }
+              // For network errors, keep the stored user data
+            })
+        } else {
+          // No stored user but we have cookies, try to get from server
+          console.log('🔍 No stored user but cookies exist, checking server...')
           
-          if (response.success && response.user) {
-            console.log('✅ Got user from server:', response.user.username)
-            setUser(response.user)
-            localStorage.setItem('user', JSON.stringify(response.user))
-          } else {
-            console.log('ℹ️ No authenticated user found')
+          try {
+            const response = await authService.getCurrentUser()
+            
+            if (response.success && response.data) {
+              console.log('✅ Got user from server:', response.data.username)
+              setUser(response.data)
+              localStorage.setItem('user', JSON.stringify(response.data))
+            } else {
+              console.log('ℹ️ Server returned no user data')
+              clearAuthState()
+            }
+          } catch (error) {
+            console.log('❌ Server request failed:', error)
+            clearAuthState()
           }
-        } catch (error) {
-          console.log('ℹ️ Not authenticated or server error')
-          // This is expected when not logged in
         }
+      } catch (error) {
+        console.error('🚨 Auth initialization error:', error)
+        clearAuthState()
+      } finally {
+        setLoading(false)
+        isInitializing.current = false
+        console.log('🔐 Auth initialization complete')
       }
-      
-      setLoading(false)
-      console.log('🔐 Auth initialization complete')
     }
 
     initializeAuth()
@@ -111,6 +147,7 @@ export function useAuth() {
             setUser(userData)
           } catch (error) {
             console.error('Error parsing user data from storage:', error)
+            setUser(null)
           }
         } else {
           setUser(null)
@@ -118,8 +155,24 @@ export function useAuth() {
       }
     }
 
+    // Listen for cookie changes (when user logs out in another tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Check if cookies still exist when user comes back to tab
+        if (!hasAuthCookies() && user) {
+          console.log('🔄 Cookies cleared in another tab, clearing auth state')
+          clearAuthState()
+        }
+      }
+    }
+
     window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, []) // Empty dependency array - only run once
 
   const login = (userData: User) => {
@@ -128,12 +181,16 @@ export function useAuth() {
     localStorage.setItem('user', JSON.stringify(userData))
   }
 
-  const logout = () => {
+  const logout = async () => {
     console.log('🔐 Logging out user')
-    authService.logout()
-    setUser(null)
-    localStorage.removeItem('user')
-    // Note: Don't remove 'token' as we use httpOnly cookies
+    try {
+      await authService.logout()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      clearAuthState()
+      // Redirect is handled by authService.logout()
+    }
   }
 
   const updateUser = (updatedUser: User) => {
@@ -154,7 +211,7 @@ export function useAuth() {
     login,
     logout,
     updateUser,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && hasAuthCookies(), // Check both user state and cookies
     getUserWithDetails
   }
 }

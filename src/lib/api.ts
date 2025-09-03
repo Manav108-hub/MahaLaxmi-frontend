@@ -1,6 +1,5 @@
 // @/lib/api.ts
 import axios from 'axios'
-import Cookies from 'js-cookie'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
@@ -29,47 +28,100 @@ const processQueue = (error: any, token = null) => {
   failedQueue = []
 }
 
-// Request interceptor - removed CSRF handling since backend doesn't use it
+// Helper function to check if we have authentication cookies
+const hasAuthCookies = (): boolean => {
+  if (typeof document === 'undefined') return false
+  return document.cookie.includes('accessToken=')
+}
+
+// Helper function to clear all auth-related data
+const clearAuthData = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('user')
+  }
+}
+
+// Helper function to redirect to login
+const redirectToLogin = () => {
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    console.log('🔄 Redirecting to login page')
+    window.location.href = '/login'
+  }
+}
+
+// Routes that should not trigger auth redirects
+const PUBLIC_ROUTES = [
+  '/api/login',
+  '/api/register',
+  '/api/refresh-token',
+  '/api/products',
+  '/api/categories',
+  '/api/product/',
+  '/api/products/slug/'
+]
+
+// Check if route is public
+const isPublicRoute = (url: string): boolean => {
+  return PUBLIC_ROUTES.some(route => url.startsWith(route))
+}
+
+// Request interceptor - no changes needed since cookies are automatic
 api.interceptors.request.use(
   (config) => {
-    // The accessToken is automatically sent via httpOnly cookies
-    // No need to manually add Authorization header
+    // Log the request for debugging
+    console.log(`📡 API Request: ${config.method?.toUpperCase()} ${config.url}`)
     return config
   },
   (error) => {
+    console.error('📡 Request Error:', error)
     return Promise.reject(error)
   }
 )
 
-// Response interceptor for error handling and token refresh
+// Response interceptor with improved error handling
 api.interceptors.response.use(
   (response) => {
+    console.log(`✅ API Response: ${response.config.method?.toUpperCase()} ${response.config.url} - ${response.status}`)
     return response
   },
   async (error) => {
     const originalRequest = error.config
+    const requestUrl = originalRequest?.url || ''
     
+    console.log(`❌ API Error: ${originalRequest?.method?.toUpperCase()} ${requestUrl} - ${error.response?.status}`)
+
+    // Handle network errors
+    if (!error.response) {
+      console.error('🌐 Network error:', error.message)
+      return Promise.reject(error)
+    }
+
     // Handle 401 Unauthorized errors
     if (error.response?.status === 401 && !originalRequest._retry) {
       
-      // Don't try to refresh token for login, register, or refresh-token endpoints
-      const skipRefreshRoutes = ['/api/login', '/api/register', '/api/refresh-token']
-      if (skipRefreshRoutes.includes(originalRequest.url)) {
+      // Don't handle auth for public routes
+      if (isPublicRoute(requestUrl)) {
+        console.log('🔓 Public route 401, not handling auth')
         return Promise.reject(error)
       }
 
-      // Check if we have an access token cookie - if not, user is logged out
-      const hasAccessToken = document.cookie.includes('accessToken=')
-      if (!hasAccessToken) {
-        // No token means user is logged out, redirect to login
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login'
-        }
+      // If we're already on the login page, don't redirect
+      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        console.log('🔓 Already on login page, not redirecting')
         return Promise.reject(error)
       }
 
+      // Check if we have access token cookie
+      if (!hasAuthCookies()) {
+        console.log('🔓 No auth cookies found, clearing data and redirecting')
+        clearAuthData()
+        redirectToLogin()
+        return Promise.reject(error)
+      }
+
+      // If we're already refreshing, queue this request
       if (isRefreshing) {
-        // If we're already refreshing, queue this request
+        console.log('🔄 Already refreshing, queuing request')
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject })
         }).then(() => {
@@ -82,11 +134,14 @@ api.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing = true
 
+      console.log('🔄 Attempting token refresh...')
+
       try {
         // Attempt to refresh token
         const response = await api.post('/api/refresh-token')
         
         if (response.data?.success) {
+          console.log('✅ Token refresh successful')
           processQueue(null)
           // Retry original request
           return api(originalRequest)
@@ -94,34 +149,34 @@ api.interceptors.response.use(
           throw new Error('Token refresh failed')
         }
       } catch (refreshError) {
-        // If refresh fails, clear queue and redirect to login
-        processQueue(refreshError)
+        console.error('❌ Token refresh failed:', refreshError)
         
-        if (typeof window !== 'undefined') {
-          // Clear any auth-related data
-          localStorage.removeItem('user')
-          window.location.href = '/login'
-        }
+        // Clear queue and auth data
+        processQueue(refreshError)
+        clearAuthData()
+        
+        // Only redirect if we're not already on login page
+        redirectToLogin()
+        
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false
       }
     }
     
+    // Handle other errors normally
     return Promise.reject(error)
   }
 )
 
 // Helper function to check if user has a valid session
-export const hasValidSession = () => {
-  return document.cookie.includes('accessToken=')
+export const hasValidSession = (): boolean => {
+  return hasAuthCookies()
 }
 
 // Helper function to clear auth state
 export const clearAuthState = () => {
-  localStorage.removeItem('user')
-  // Note: We can't clear httpOnly cookies from JavaScript
-  // The backend will clear them on logout
+  clearAuthData()
 }
 
 export default api
