@@ -1,6 +1,18 @@
-// @/services/paymentService.ts
 import api from '@/lib/api'
 import { ApiResponse, PaymentSession } from '@/lib/types'
+
+const handleApiCall = async <T>(apiCall: () => Promise<any>): Promise<ApiResponse<T>> => {
+  try {
+    const response = await apiCall()
+    return response.data
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.response?.data?.message || 'Payment request failed',
+      message: error.response?.data?.message || 'Payment request failed'
+    }
+  }
+}
 
 export const paymentService = {
   async initiatePayment(paymentData: {
@@ -9,22 +21,18 @@ export const paymentService = {
     callbackUrl: string
     mobileNumber?: string
   }): Promise<ApiResponse<PaymentSession>> {
-    const response = await api.post('/api/payment/initiate', paymentData)
-    return response.data
+    return handleApiCall(() => api.post('/api/payment/initiate', paymentData))
   },
 
   async checkPaymentStatus(transactionId: string): Promise<ApiResponse<PaymentSession>> {
-    const response = await api.get(`/api/payment/status/${transactionId}`)
-    return response.data
+    return handleApiCall(() => api.get(`/api/payment/status/${transactionId}`))
   },
 
   async completePayment(transactionId: string, success: boolean): Promise<ApiResponse> {
-    const response = await api.post(`/api/payment/complete/${transactionId}`, { success })
-    return response.data
+    return handleApiCall(() => api.post(`/api/payment/complete/${transactionId}`, { success }))
   },
 
   async getPaymentSessions(): Promise<ApiResponse<PaymentSession[]>> {
-    const response = await api.get('/api/admin/payments')
-    return response.data
+    return handleApiCall(() => api.get('/api/admin/payments'))
   }
 }

@@ -1,6 +1,11 @@
-// @/services/authService.ts
 import api from '@/lib/api'
 import { ApiResponse, User } from '@/lib/types'
+
+const createErrorResponse = <T = unknown>(error: any, fallbackMessage: string): ApiResponse<T> => ({
+  success: false,
+  error: error.response?.data?.message || fallbackMessage,
+  message: error.response?.data?.message || fallbackMessage
+})
 
 export const authService = {
   async register(userData: {
@@ -15,12 +20,7 @@ export const authService = {
       const response = await api.post('/api/register', userData)
       return response.data
     } catch (error: any) {
-      console.error('Register error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Registration failed',
-        message: error.response?.data?.message || 'Registration failed'
-      }
+      return createErrorResponse<{ user: User }>(error, 'Registration failed')
     }
   },
 
@@ -29,50 +29,37 @@ export const authService = {
     password: string
   }): Promise<ApiResponse<{ user: User }>> {
     try {
-      const response = await api.post('/api/login', credentials, {
-        withCredentials: true
-      })
-      console.log('Login response:', response.data)
+      const response = await api.post('/api/login', credentials)
       return response.data
     } catch (error: any) {
-      console.error('Login error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Login failed',
-        message: error.response?.data?.message || 'Login failed'
-      }
+      return createErrorResponse<{ user: User }>(error, 'Login failed')
     }
   },
 
-  async refreshToken(): Promise<ApiResponse<{ user: User }>> {
+  async getCurrentUser(): Promise<ApiResponse<User>> {
     try {
-      const response = await api.post('/api/refresh-token', {}, {
-        withCredentials: true
-      })
-      return response.data
-    } catch (error: any) {
-      console.error('Refresh token error:', error)
+      const response = await api.get('/api/me')
+      const userData = response.data.data || response.data
+      
       return {
-        success: false,
-        error: error.response?.data?.message || 'Token refresh failed',
-        message: error.response?.data?.message || 'Token refresh failed'
+        success: true,
+        data: userData,
+        message: 'User data retrieved successfully'
       }
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        return { success: false, error: 'Not authenticated' }
+      }
+      return createErrorResponse<User>(error, 'Failed to get current user')
     }
   },
 
   async getProfile(): Promise<ApiResponse<{ user: User }>> {
     try {
-      const response = await api.get('/api/profile', {
-        withCredentials: true
-      })
+      const response = await api.get('/api/profile')
       return response.data
     } catch (error: any) {
-      console.error('Get profile error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Failed to get profile',
-        message: error.response?.data?.message || 'Failed to get profile'
-      }
+      return createErrorResponse<{ user: User }>(error, 'Failed to get profile')
     }
   },
 
@@ -85,85 +72,23 @@ export const authService = {
     pincode?: string
   }): Promise<ApiResponse<{ user: User }>> {
     try {
-      const response = await api.post('/api/user-details', userData, {
-        withCredentials: true
-      })
+      const response = await api.post('/api/user-details', userData)
       return response.data
     } catch (error: any) {
-      console.error('Update profile error:', error)
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Failed to update profile',
-        message: error.response?.data?.message || 'Failed to update profile'
-      }
+      return createErrorResponse<{ user: User }>(error, 'Failed to update profile')
     }
   },
 
   async logout(): Promise<void> {
     try {
-      console.log('Attempting logout...')
-      await api.post('/api/logout', {}, {
-        withCredentials: true
-      })
-      console.log('Logout successful')
+      await api.post('/api/logout')
     } catch (error) {
       console.error('Logout error:', error)
-      // Don't throw error, just log it - we still want to clear local state
     } finally {
-      // Always clear local storage and redirect
       if (typeof window !== 'undefined') {
         localStorage.removeItem('user')
-        // Small delay to ensure state is cleared before redirect
-        setTimeout(() => {
-          window.location.href = '/login'
-        }, 100)
+        setTimeout(() => window.location.href = '/login', 100)
       }
-    }
-  },
-
-  async getCurrentUser(): Promise<ApiResponse<User>> {
-    try {
-      const response = await api.get('/api/me', {
-        withCredentials: true
-      })
-      
-      // Handle both data formats (wrapped in data property or direct)
-      const userData = response.data.data || response.data
-      
-      return {
-        success: true,
-        data: userData,
-        message: 'User data retrieved successfully'
-      }
-    } catch (error: any) {
-      console.error('Get current user error:', error)
-      
-      // Don't log 401 errors as they're expected when not authenticated
-      if (error.response?.status !== 401) {
-        console.error('Unexpected error getting current user:', error)
-      }
-      
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Failed to get current user',
-        message: error.response?.data?.message || 'Failed to get current user'
-      }
-    }
-  },
-
-  // Check if user is authenticated by checking cookies (don't make API call)
-  isAuthenticated(): boolean {
-    if (typeof document === 'undefined') return false
-    return document.cookie.includes('accessToken=')
-  },
-
-  // Verify authentication with server (makes API call)
-  async verifyAuthentication(): Promise<boolean> {
-    try {
-      const response = await this.getCurrentUser()
-      return response.success
-    } catch {
-      return false
     }
   }
 }
