@@ -9,18 +9,16 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react'
-import { authService } from '@/services/authService'
-import { useAuth } from '@/hooks/useAuth'
+import { useLogin } from '@/hooks/useAuth'
 
 type FormData = { username: string; password: string }
 
 export default function LoginPage() {
   const [formData, setFormData] = useState<FormData>({ username: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
-  const { login } = useAuth()
+  const loginMutation = useLogin()
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -36,23 +34,19 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
     setError('')
 
     try {
-      const response = await authService.login(formData)
+      const response = await loginMutation.mutateAsync(formData)
       
-      if (response.success && response.user) {
-        login(response.user)
+      if (response.success && response.data?.user) {
         router.push('/')
       } else {
         throw new Error(response.message || 'Login failed')
       }
     } catch (err: any) {
-      const error = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please try again.'
-      setError(error)
-    } finally {
-      setLoading(false)
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please try again.'
+      setError(errorMessage)
     }
   }
 
@@ -155,10 +149,10 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loginMutation.isPending}
                 className="w-full bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white shadow-lg"
               >
-                {loading ? (
+                {loginMutation.isPending ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                     Signing in...

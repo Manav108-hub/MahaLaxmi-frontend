@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios'
+import { apiRateLimiter } from './validation'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 const PUBLIC_ROUTES = ['/api/login', '/api/register', '/api/refresh-token', '/api/products', '/api/categories']
@@ -12,8 +13,28 @@ let refreshPromise: Promise<any> | null = null
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  withCredentials: true
+  withCredentials: true,
+  timeout: 10000, // 10 second timeout
 })
+
+// Request interceptor for rate limiting and security
+api.interceptors.request.use(
+  (config) => {
+    // Rate limiting check
+    const clientId = typeof window !== 'undefined' ? 
+      (localStorage.getItem('clientId') || 'anonymous') : 'server'
+    
+    if (!apiRateLimiter.isAllowed(clientId)) {
+      return Promise.reject(new Error('Too many requests. Please slow down.'))
+    }
+
+    // Add security headers
+    config.headers['X-Requested-With'] = 'XMLHttpRequest'
+    
+    return config
+  },
+  (error) => Promise.reject(error)
+)
 
 api.interceptors.response.use(
   response => response,

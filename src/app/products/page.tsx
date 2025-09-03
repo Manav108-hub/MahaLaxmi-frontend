@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Product, Category } from '@/lib/types'
-import { productService } from '@/services/productService'
+import { useProducts, useCategories } from '@/hooks/useProducts'
 import ProductCard from '@/components/products/ProductCard'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -98,9 +98,6 @@ const FiltersSection = ({
 )
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [sortBy, setSortBy] = useState<SortOption>('name')
@@ -108,37 +105,15 @@ export default function ProductsPage() {
   const searchParams = useSearchParams()
   const categoryFromUrl = searchParams.get('category') || 'all'
 
+  // Use cached queries
+  const { data: products = [], isLoading: productsLoading, error: productsError } = useProducts()
+  const { data: categories = [], isLoading: categoriesLoading } = useCategories()
+  
+  const loading = productsLoading || categoriesLoading
+
+  // Set category from URL on mount
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-        
-        const [productsRes, categoriesRes] = await Promise.all([
-          productService.getProducts(),
-          productService.getCategories()
-        ])
-
-        if (Array.isArray(productsRes.products)) {
-          setProducts(productsRes.products)
-        } else {
-          console.error('Unexpected products data format:', productsRes)
-        }
-
-        if (categoriesRes.success && Array.isArray(categoriesRes.data)) {
-          setCategories(categoriesRes.data)
-        } else if (Array.isArray(categoriesRes)) {
-          setCategories(categoriesRes)
-        }
-
-        setSelectedCategory(categoryFromUrl)
-      } catch (error) {
-        console.error('Failed to fetch data:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
+    setSelectedCategory(categoryFromUrl)
   }, [categoryFromUrl])
 
   const filteredProducts = useMemo(() => {
@@ -160,6 +135,18 @@ export default function ProductsPage() {
         }
       })
   }, [products, searchTerm, selectedCategory, sortBy])
+
+  // Handle errors
+  if (productsError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white">
+        <div className="container mx-auto px-4 py-16 text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Products</h1>
+          <p className="text-gray-600">Please try refreshing the page</p>
+        </div>
+      </div>
+    )
+  }
 
   const clearFilters = () => {
     setSearchTerm('')
