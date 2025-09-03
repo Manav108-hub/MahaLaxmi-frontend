@@ -1,25 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Filter, SortAsc, Grid3X3, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import ProductCard from '@/components/products/ProductCard'
 import { Product } from '@/lib/types'
 
@@ -37,177 +25,197 @@ interface ProductFilters {
   inStock?: boolean
 }
 
-export default function ProductGrid({
-  products,
-  loading = false,
-  categories = [],
-  onFilterChange,
-}: ProductGridProps) {
+const PRICE_RANGES = [
+  { label: 'Under ₹500', value: '0-500' },
+  { label: '₹500 - ₹1,000', value: '500-1000' },
+  { label: '₹1,000 - ₹2,500', value: '1000-2500' },
+  { label: '₹2,500 - ₹5,000', value: '2500-5000' },
+  { label: 'Above ₹5,000', value: '5000-999999' }
+]
+
+const SORT_OPTIONS = [
+  { label: 'Default', value: 'default' },
+  { label: 'Name A-Z', value: 'name-asc' },
+  { label: 'Name Z-A', value: 'name-desc' },
+  { label: 'Price: Low to High', value: 'price-low-high' },
+  { label: 'Price: High to Low', value: 'price-high-low' },
+  { label: 'Newest First', value: 'newest' }
+]
+
+const LoadingSkeleton = () => (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    {Array.from({ length: 8 }).map((_, i) => (
+      <Card key={i} className="animate-pulse">
+        <CardContent className="p-4">
+          <div className="aspect-square bg-gray-200 rounded-lg mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded mb-2"></div>
+          <div className="h-3 bg-gray-200 rounded mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+        </CardContent>
+      </Card>
+    ))}
+  </div>
+)
+
+const EmptyResults = ({ onClearFilters }: { onClearFilters: () => void }) => (
+  <Card>
+    <CardContent className="p-12 text-center">
+      <p className="text-gray-500 mb-4">No products found matching your criteria.</p>
+      <Button variant="outline" onClick={onClearFilters}>Clear Filters</Button>
+    </CardContent>
+  </Card>
+)
+
+const FilterPanel = ({ 
+  filters, 
+  categories, 
+  onFilterUpdate, 
+  onClearFilters, 
+  activeFiltersCount 
+}: {
+  filters: ProductFilters
+  categories: string[]
+  onFilterUpdate: (key: keyof ProductFilters, value: any) => void
+  onClearFilters: () => void
+  activeFiltersCount: number
+}) => (
+  <div className="space-y-6">
+    <div>
+      <h3 className="font-semibold mb-3">Category</h3>
+      <Select value={filters.category || 'all'} onValueChange={(value) => onFilterUpdate('category', value)}>
+        <SelectTrigger>
+          <SelectValue placeholder="All Categories" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Categories</SelectItem>
+          {categories.map((category) => (
+            <SelectItem key={category} value={category.toLowerCase()}>{category}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+
+    <div>
+      <h3 className="font-semibold mb-3">Price Range</h3>
+      <Select
+        value={filters.priceRange ? `${filters.priceRange[0]}-${filters.priceRange[1]}` : 'all'}
+        onValueChange={(value) => {
+          if (value === 'all') {
+            onFilterUpdate('priceRange', undefined)
+          } else {
+            const [min, max] = value.split('-').map(Number)
+            onFilterUpdate('priceRange', [min, max])
+          }
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="All Prices" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Prices</SelectItem>
+          {PRICE_RANGES.map((range) => (
+            <SelectItem key={range.value} value={range.value}>{range.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+
+    <div className="flex items-center space-x-2">
+      <input
+        type="checkbox"
+        id="inStock"
+        checked={filters.inStock || false}
+        onChange={(e) => onFilterUpdate('inStock', e.target.checked || undefined)}
+        className="rounded border-gray-300"
+      />
+      <label htmlFor="inStock" className="text-sm font-medium">In Stock Only</label>
+    </div>
+
+    {activeFiltersCount > 0 && (
+      <Button variant="outline" onClick={onClearFilters} className="w-full">
+        Clear All Filters
+      </Button>
+    )}
+  </div>
+)
+
+const ViewModeToggle = ({ viewMode, onViewModeChange }: {
+  viewMode: 'grid' | 'list'
+  onViewModeChange: (mode: 'grid' | 'list') => void
+}) => (
+  <div className="hidden sm:flex border rounded-lg p-1">
+    <Button
+      variant={viewMode === 'grid' ? 'default' : 'ghost'}
+      size="sm"
+      onClick={() => onViewModeChange('grid')}
+    >
+      <Grid3X3 className="w-4 h-4" />
+    </Button>
+    <Button
+      variant={viewMode === 'list' ? 'default' : 'ghost'}
+      size="sm"
+      onClick={() => onViewModeChange('list')}
+    >
+      <List className="w-4 h-4" />
+    </Button>
+  </div>
+)
+
+export default function ProductGrid({ products, loading = false, categories = [], onFilterChange }: ProductGridProps) {
   const [filters, setFilters] = useState<ProductFilters>({})
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>(products)
 
-  useEffect(() => {
+  const filteredProducts = useMemo(() => {
     let filtered = [...products]
 
     if (filters.category && filters.category !== 'all') {
-      filtered = filtered.filter(
-        (product) =>
-          product.category.name.toLowerCase() ===
-          filters.category?.toLowerCase()
+      filtered = filtered.filter(product => 
+        product.category.name.toLowerCase() === filters.category?.toLowerCase()
       )
     }
 
     if (filters.priceRange) {
-      filtered = filtered.filter((product) => {
-        const price = product.price
-        return (
-          price >= filters.priceRange![0] &&
-          price <= filters.priceRange![1]
-        )
-      })
+      filtered = filtered.filter(product => 
+        product.price >= filters.priceRange![0] && product.price <= filters.priceRange![1]
+      )
     }
 
     if (filters.inStock) {
-      filtered = filtered.filter((product) => product.stock > 0)
+      filtered = filtered.filter(product => product.stock > 0)
     }
 
-    if (filters.sortBy) {
+    if (filters.sortBy && filters.sortBy !== 'default') {
       filtered.sort((a, b) => {
         switch (filters.sortBy) {
-          case 'price-low-high':
-            return a.price - b.price
-          case 'price-high-low':
-            return b.price - a.price
-          case 'name-asc':
-            return a.name.localeCompare(b.name)
-          case 'name-desc':
-            return b.name.localeCompare(a.name)
-          case 'newest':
-            return (
-              new Date(b.createdAt).getTime() -
-              new Date(a.createdAt).getTime()
-            )
-          default:
-            return 0
+          case 'price-low-high': return a.price - b.price
+          case 'price-high-low': return b.price - a.price
+          case 'name-asc': return a.name.localeCompare(b.name)
+          case 'name-desc': return b.name.localeCompare(a.name)
+          case 'newest': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          default: return 0
         }
       })
     }
 
-    setFilteredProducts(filtered)
+    return filtered
+  }, [products, filters])
+
+  const activeFiltersCount = useMemo(() => 
+    Object.values(filters).filter(value => value !== undefined && value !== 'all').length,
+    [filters]
+  )
+
+  useEffect(() => {
     onFilterChange?.(filters)
-  }, [products, filters, onFilterChange])
+  }, [filters, onFilterChange])
 
   const updateFilter = (key: keyof ProductFilters, value: any) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value === 'all' ? undefined : value,
-    }))
+    setFilters(prev => ({ ...prev, [key]: value === 'all' ? undefined : value }))
   }
 
   const clearFilters = () => setFilters({})
 
-  const activeFiltersCount = Object.values(filters).filter(
-    (value) => value !== undefined && value !== 'all'
-  ).length
-
-  const FilterPanel = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="font-semibold mb-3">Category</h3>
-        <Select
-          value={filters.category || 'all'}
-          onValueChange={(value) => updateFilter('category', value)}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((category) => (
-              <SelectItem
-                key={category}
-                value={category.toLowerCase()}
-              >
-                {category}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <h3 className="font-semibold mb-3">Price Range</h3>
-        <Select
-          value={
-            filters.priceRange
-              ? `${filters.priceRange[0]}-${filters.priceRange[1]}`
-              : 'all'
-          }
-          onValueChange={(value) => {
-            if (value === 'all') {
-              updateFilter('priceRange', undefined)
-            } else {
-              const [min, max] = value.split('-').map(Number)
-              updateFilter('priceRange', [min, max])
-            }
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="All Prices" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Prices</SelectItem>
-            <SelectItem value="0-500">Under ₹500</SelectItem>
-            <SelectItem value="500-1000">₹500 - ₹1,000</SelectItem>
-            <SelectItem value="1000-2500">₹1,000 - ₹2,500</SelectItem>
-            <SelectItem value="2500-5000">₹2,500 - ₹5,000</SelectItem>
-            <SelectItem value="5000-999999">Above ₹5,000</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <div className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            id="inStock"
-            checked={filters.inStock || false}
-            onChange={(e) =>
-              updateFilter('inStock', e.target.checked || undefined)
-            }
-            className="rounded border-gray-300"
-          />
-          <label htmlFor="inStock" className="text-sm font-medium">
-            In Stock Only
-          </label>
-        </div>
-      </div>
-
-      {activeFiltersCount > 0 && (
-        <Button variant="outline" onClick={clearFilters} className="w-full">
-          Clear All Filters
-        </Button>
-      )}
-    </div>
-  )
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {[...Array(8)].map((_, i) => (
-          <Card key={i} className="animate-pulse">
-            <CardContent className="p-4">
-              <div className="aspect-square bg-gray-200 rounded-lg mb-4"></div>
-              <div className="h-4 bg-gray-200 rounded mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded mb-4"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    )
-  }
+  if (loading) return <LoadingSkeleton />
 
   return (
     <div className="space-y-6">
@@ -219,9 +227,7 @@ export default function ProductGrid({
                 <Filter className="w-4 h-4 mr-2" />
                 Filters
                 {activeFiltersCount > 0 && (
-                  <Badge className="ml-2 px-1.5 py-0.5 text-xs">
-                    {activeFiltersCount}
-                  </Badge>
+                  <Badge className="ml-2 px-1.5 py-0.5 text-xs">{activeFiltersCount}</Badge>
                 )}
               </Button>
             </SheetTrigger>
@@ -230,52 +236,36 @@ export default function ProductGrid({
                 <SheetTitle>Filters</SheetTitle>
               </SheetHeader>
               <div className="mt-6">
-                <FilterPanel />
+                <FilterPanel
+                  filters={filters}
+                  categories={categories}
+                  onFilterUpdate={updateFilter}
+                  onClearFilters={clearFilters}
+                  activeFiltersCount={activeFiltersCount}
+                />
               </div>
             </SheetContent>
           </Sheet>
 
           <span className="text-sm text-gray-600">
-            {filteredProducts.length} product
-            {filteredProducts.length !== 1 ? 's' : ''} found
+            {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''} found
           </span>
         </div>
 
         <div className="flex items-center gap-4">
-          <Select
-            value={filters.sortBy || 'default'}
-            onValueChange={(value) => updateFilter('sortBy', value)}
-          >
+          <Select value={filters.sortBy || 'default'} onValueChange={(value) => updateFilter('sortBy', value)}>
             <SelectTrigger className="w-48">
               <SortAsc className="w-4 h-4 mr-2" />
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Default</SelectItem>
-              <SelectItem value="name-asc">Name A-Z</SelectItem>
-              <SelectItem value="name-desc">Name Z-A</SelectItem>
-              <SelectItem value="price-low-high">Price: Low to High</SelectItem>
-              <SelectItem value="price-high-low">Price: High to Low</SelectItem>
-              <SelectItem value="newest">Newest First</SelectItem>
+              {SORT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
-          <div className="hidden sm:flex border rounded-lg p-1">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('grid')}
-            >
-              <Grid3X3 className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-            >
-              <List className="w-4 h-4" />
-            </Button>
-          </div>
+          <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
       </div>
 
@@ -288,31 +278,25 @@ export default function ProductGrid({
                 {activeFiltersCount > 0 && <Badge>{activeFiltersCount}</Badge>}
               </div>
               <Separator className="mb-4" />
-              <FilterPanel />
+              <FilterPanel
+                filters={filters}
+                categories={categories}
+                onFilterUpdate={updateFilter}
+                onClearFilters={clearFilters}
+                activeFiltersCount={activeFiltersCount}
+              />
             </CardContent>
           </Card>
         </div>
 
         <div className="flex-1">
           {filteredProducts.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <p className="text-gray-500 mb-4">
-                  No products found matching your criteria.
-                </p>
-                <Button variant="outline" onClick={clearFilters}>
-                  Clear Filters
-                </Button>
-              </CardContent>
-            </Card>
+            <EmptyResults onClearFilters={clearFilters} />
           ) : (
-            <div
-              className={
-                viewMode === 'grid'
-                  ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
-                  : 'space-y-4'
-              }
-            >
+            <div className={viewMode === 'grid' 
+              ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
+              : 'space-y-4'
+            }>
               {filteredProducts.map((product) => (
                 <ProductCard key={product.id} product={product} layout={viewMode} />
               ))}

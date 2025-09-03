@@ -1,323 +1,164 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { CartItem } from '@/lib/types';
-import { cartService } from '@/services/cartService';
-import { useAuth } from './useAuth';
-import { toast } from 'sonner';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { CartItem } from '@/lib/types'
+import { cartService } from '@/services/cartService'
+import { useAuth } from './useAuth'
+import { toast } from 'sonner'
 
-interface CartState {
-  cartItems: CartItem[];
-  loading: boolean;
-  error: string | null;
+type CartState = {
+  items: CartItem[]
+  loading: boolean
+  error: string | null
 }
 
+const initialState: CartState = { items: [], loading: false, error: null }
+
 export function useCart() {
-  const [{ cartItems, loading, error }, setState] = useState<CartState>({
-    cartItems: [],
-    loading: false,
-    error: null,
-  });
+  const [state, setState] = useState<CartState>(initialState)
+  const { isAuthenticated, loading: authLoading } = useAuth()
+  const mounted = useRef(true)
+  const fetching = useRef(false)
+  const prevAuth = useRef(isAuthenticated)
 
-  const { isAuthenticated, loading: authLoading } = useAuth();
-  const fetchingRef = useRef(false);
-  const mountedRef = useRef(true);
+  useEffect(() => () => { mounted.current = false }, [])
 
-  // Track previous auth state to detect changes
-  const prevAuthStateRef = useRef(isAuthenticated);
+  const safeSetState = useCallback((updater: (prev: CartState) => CartState) => {
+    if (mounted.current) setState(updater)
+  }, [])
 
-  console.log('useCart render - cartItems:', cartItems.length, 'loading:', loading, 'authLoading:', authLoading, 'isAuthenticated:', isAuthenticated);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // Helper functions with stable references
-  const setLoading = useCallback((value: boolean) => {
-    if (!mountedRef.current) return;
-    console.log('Setting loading to:', value);
-    setState(prev => ({ ...prev, loading: value }));
-  }, []);
-  
-  const setError = useCallback((msg: string | null) => {
-    if (!mountedRef.current) return;
-    console.log('Setting error to:', msg);
-    setState(prev => ({ ...prev, error: msg }));
-  }, []);
-
-  // Stable fetchCart function that doesn't cause re-renders
-  const fetchCart = useCallback(async (): Promise<void> => {
-    // Prevent multiple simultaneous fetches
-    if (fetchingRef.current) {
-      console.log('Fetch already in progress, skipping...');
-      return;
-    }
-
-    // Don't fetch if component is unmounted
-    if (!mountedRef.current) {
-      console.log('Component unmounted, skipping cart fetch...');
-      return;
-    }
-
-    // Don't fetch if still checking authentication
-    if (authLoading) {
-      console.log('Auth still loading, skipping cart fetch...');
-      return;
-    }
-
-    console.log('fetchCart called - isAuthenticated:', isAuthenticated);
+  const fetchCart = useCallback(async () => {
+    if (fetching.current || !mounted.current || authLoading) return
     
     if (!isAuthenticated) {
-      console.log('Not authenticated, clearing cart');
-      if (mountedRef.current) {
-        setState(prev => ({ ...prev, cartItems: [], loading: false, error: null }));
-      }
-      return;
+      safeSetState(() => initialState)
+      return
     }
 
-    fetchingRef.current = true;
-    setLoading(true);
-    setError(null);
+    fetching.current = true
+    safeSetState(prev => ({ ...prev, loading: true, error: null }))
 
     try {
-      console.log('Calling cartService.getCart()...');
-      const res = await cartService.getCart();
-      console.log('Cart service response:', res);
-      
-      // Check if component is still mounted before updating state
-      if (!mountedRef.current) {
-        console.log('Component unmounted during fetch, skipping state update');
-        return;
-      }
-      
-      if (!res.success) {
-        throw new Error(res.error ?? 'Failed to fetch cart');
-      }
+      const res = await cartService.getCart()
+      if (!mounted.current) return
 
-      // Handle different response formats
-      let items: CartItem[] = [];
-      if (Array.isArray(res.data)) {
-        items = res.data;
-      } else if (res.data && 'items' in res.data) {
-        items = res.data.items;
-      }
-
-      console.log('Setting cart items:', items.length, 'items');
-      setState(prev => ({ ...prev, cartItems: items, error: null }));
+      if (!res.success) throw new Error(res.error ?? 'Failed to fetch cart')
+      
+      const items = Array.isArray(res.data) ? res.data : res.data?.items ?? []
+      safeSetState(prev => ({ ...prev, items, error: null }))
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mounted.current) return
       
-      const msg = err instanceof Error ? err.message : 'Failed to fetch cart';
-      console.error('fetchCart error:', err);
-      
-      // Only set error if it's not an auth error (those are handled by the API interceptor)
-      if (!msg.includes('401') && !msg.includes('Authentication')) {
-        setError(msg);
-        toast.error(msg);
+      const error = err instanceof Error ? err.message : 'Failed to fetch cart'
+      if (!error.includes('401')) {
+        safeSetState(prev => ({ ...prev, error }))
+        toast.error(error)
       }
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
+      if (mounted.current) {
+        safeSetState(prev => ({ ...prev, loading: false }))
       }
-      fetchingRef.current = false;
+      fetching.current = false
     }
-  }, [isAuthenticated, authLoading, setLoading, setError]);
+  }, [isAuthenticated, authLoading, safeSetState])
 
-  // Effect that only runs when auth status actually changes
   useEffect(() => {
-    const authStateChanged = prevAuthStateRef.current !== isAuthenticated;
-    prevAuthStateRef.current = isAuthenticated;
+    const authChanged = prevAuth.current !== isAuthenticated
+    prevAuth.current = isAuthenticated
 
-    // Don't fetch if auth is still loading
-    if (authLoading) {
-      return;
+    if (!authLoading && (authChanged || (isAuthenticated && state.items.length === 0))) {
+      fetchCart()
     }
+  }, [isAuthenticated, authLoading])
 
-    // Only fetch if auth state actually changed or if we just became authenticated
-    if (authStateChanged || (isAuthenticated && cartItems.length === 0)) {
-      console.log('useEffect triggered - auth state changed or authenticated with empty cart');
-      fetchCart();
-    }
-  }, [isAuthenticated, authLoading, fetchCart]); // fetchCart is stable, so this won't cause infinite loops
-
-  // Cart operations with stable references
-  const addToCart = useCallback(
-    async (productId: string, quantity: number = 1) => {
-      console.log('addToCart called:', { productId, quantity });
-      
+  const createCartAction = useCallback(
+    <T extends any[]>(
+      action: (...args: T) => Promise<any>,
+      successMsg: string,
+      errorMsg: string,
+      optimisticUpdate?: (prev: CartState, ...args: T) => CartState
+    ) => async (...args: T) => {
       if (!isAuthenticated) {
-        toast.error('Please login to add items to cart');
-        return { success: false, message: 'User not authenticated' };
+        toast.error('Please login to modify cart')
+        return { success: false, message: 'User not authenticated' }
       }
 
       try {
-        console.log('Calling cartService.addToCart...');
-        const res = await cartService.addToCart(productId, quantity);
-        console.log('addToCart response:', res);
-
-        if (!res.success) {
-          toast.error(res.message ?? 'Failed to add item to cart');
-          return res;
-        }
-
-        console.log('Add successful, refreshing cart...');
-        await fetchCart();
-        toast.success('Item added to cart');
-        return res;
-      } catch (err) {
-        console.error('addToCart error:', err);
-        const errorMsg = err instanceof Error ? err.message : 'Failed to add item to cart';
+        if (optimisticUpdate) safeSetState(prev => optimisticUpdate(prev, ...args))
         
-        // Don't show toast for auth errors (handled by API interceptor)
-        if (!errorMsg.includes('401') && !errorMsg.includes('Authentication')) {
-          toast.error('Failed to add item to cart');
-          setError('Failed to add item to cart');
+        const res = await action(...args)
+        
+        if (!res.success) {
+          toast.error(res.message ?? errorMsg)
+          if (optimisticUpdate) await fetchCart()
+          return res
         }
-        throw err;
+
+        if (!optimisticUpdate) await fetchCart()
+        
+        toast.success(successMsg)
+        return res
+      } catch (err) {
+        const error = err instanceof Error ? err.message : errorMsg
+        if (!error.includes('401')) {
+          toast.error(errorMsg)
+          safeSetState(prev => ({ ...prev, error: errorMsg }))
+        }
+        if (optimisticUpdate) await fetchCart()
+        throw err
       }
     },
-    [isAuthenticated, fetchCart, setError],
-  );
+    [isAuthenticated, fetchCart, safeSetState]
+  )
 
-  const updateQuantity = useCallback(
-    async (itemId: string, quantity: number) => {
-      console.log('updateQuantity called:', { itemId, quantity });
-      
-      if (!isAuthenticated) {
-        console.log('Not authenticated');
-        return { success: false, message: 'User not authenticated' };
-      }
-      
-      if (quantity < 1) {
-        console.log('Invalid quantity');
-        return { success: false, message: 'Quantity must be at least 1' };
-      }
+  const addToCart = createCartAction(
+    (productId: string, quantity = 1) => cartService.addToCart(productId, quantity),
+    'Item added to cart',
+    'Failed to add item to cart'
+  )
 
-      try {
-        console.log('Calling cartService.updateCartItem...');
-        const res = await cartService.updateCartItem(itemId, quantity);
-        console.log('updateCartItem response:', res);
+  const updateQuantity = createCartAction(
+    (itemId: string, quantity: number) => 
+      quantity < 1 
+        ? Promise.resolve({ success: false, message: 'Quantity must be at least 1' })
+        : cartService.updateCartItem(itemId, quantity),
+    'Cart updated',
+    'Failed to update cart',
+    (prev, itemId: string, quantity: number) => ({
+      ...prev,
+      items: prev.items.map(item => 
+        item.id === itemId ? { ...item, quantity } : item
+      )
+    })
+  )
 
-        if (!res.success) {
-          toast.error(res.message ?? 'Failed to update cart');
-          return res;
-        }
+  const removeItem = createCartAction(
+    (itemId: string) => cartService.removeFromCart(itemId),
+    'Item removed',
+    'Failed to remove item',
+    (prev, itemId: string) => ({
+      ...prev,
+      items: prev.items.filter(item => item.id !== itemId)
+    })
+  )
 
-        // Update local state immediately for better UX
-        console.log('Update successful, updating local state...');
-        if (mountedRef.current) {
-          setState(prev => ({
-            ...prev,
-            cartItems: prev.cartItems.map(item =>
-              item.id === itemId ? { ...item, quantity } : item
-            )
-          }));
-        }
-
-        toast.success('Cart updated');
-        return res;
-      } catch (err) {
-        console.error('updateQuantity error:', err);
-        const errorMsg = err instanceof Error ? err.message : 'Failed to update cart';
-        
-        // Don't show toast for auth errors
-        if (!errorMsg.includes('401') && !errorMsg.includes('Authentication')) {
-          toast.error('Failed to update cart');
-          setError('Failed to update cart');
-        }
-        throw err;
-      }
-    },
-    [isAuthenticated, setError],
-  );
-
-  const removeItem = useCallback(
-    async (itemId: string) => {
-      console.log('removeItem called:', { itemId });
-      
-      if (!isAuthenticated) {
-        console.log('Not authenticated');
-        return { success: false, message: 'User not authenticated' };
-      }
-
-      try {
-        console.log('Calling cartService.removeFromCart...');
-        const res = await cartService.removeFromCart(itemId);
-        console.log('removeFromCart response:', res);
-
-        if (!res.success) {
-          toast.error(res.message ?? 'Failed to remove item');
-          return res;
-        }
-
-        // Remove item from local state immediately
-        console.log('Remove successful, updating local state...');
-        if (mountedRef.current) {
-          setState(prev => ({
-            ...prev,
-            cartItems: prev.cartItems.filter(item => item.id !== itemId)
-          }));
-        }
-
-        toast.success('Item removed');
-        return res;
-      } catch (err) {
-        console.error('removeItem error:', err);
-        const errorMsg = err instanceof Error ? err.message : 'Failed to remove item from cart';
-        
-        // Don't show toast for auth errors
-        if (!errorMsg.includes('401') && !errorMsg.includes('Authentication')) {
-          toast.error('Failed to remove item from cart');
-          setError('Failed to remove item from cart');
-        }
-        throw err;
-      }
-    },
-    [isAuthenticated, setError],
-  );
-
-  // Derived data with stable references
-  const totalAmount = useMemo(
-    () =>
-      cartItems.reduce(
-        (sum, item) => sum + (item.product?.price || 0) * item.quantity,
-        0,
-      ),
-    [cartItems],
-  );
-
-  const totalItems = useMemo(
-    () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
-    [cartItems],
-  );
-
-  const getItemQuantity = useCallback(
-    (productId: string) =>
-      cartItems.find(i => i.productId === productId)?.quantity ?? 0,
-    [cartItems],
-  );
-
-  const forceRefresh = useCallback(() => {
-    console.log('Force refresh called');
-    if (isAuthenticated) {
-      fetchCart();
-    }
-  }, [fetchCart, isAuthenticated]);
+  const derived = useMemo(() => {
+    const totalAmount = state.items.reduce((sum, item) => sum + (item.product?.price || 0) * item.quantity, 0)
+    const totalItems = state.items.reduce((sum, item) => sum + item.quantity, 0)
+    const getItemQuantity = (productId: string) => state.items.find(i => i.productId === productId)?.quantity ?? 0
+    
+    return { totalAmount, totalItems, getItemQuantity }
+  }, [state.items])
 
   return {
-    cartItems,
-    loading,
-    error,
+    cartItems: state.items,
+    loading: state.loading,
+    error: state.error,
+    isEmpty: state.items.length === 0,
     addToCart,
     updateQuantity,
     removeItem,
     fetchCart,
-    forceRefresh,
-    totalAmount,
-    totalItems,
-    getTotalItems: () => totalItems,
-    getItemQuantity,
-    isEmpty: cartItems.length === 0,
-  };
+    forceRefresh: fetchCart,
+    getTotalItems: () => derived.totalItems,
+    ...derived
+  } as const
 }

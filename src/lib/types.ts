@@ -1,5 +1,3 @@
-// --- TypeScript Interfaces (lib/types.ts) ---
-
 export interface User {
   role: string;
   id: string;
@@ -11,9 +9,9 @@ export interface User {
   city?: string;
   state?: string;
   pincode?: string;
-  isAdmin: boolean; // Changed from role: 'USER' | 'ADMIN' to match your backend
+  isAdmin: boolean;
   createdAt: string;  
-  updatedAt?: string; // Made optional since backend might not always return it
+  updatedAt?: string;
 }
 
 export interface UserWithDetails {
@@ -125,20 +123,18 @@ export interface PaymentSession {
   updatedAt: string;
 }
 
-// FIXED: Corrected ApiResponse interface
 export interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
   data?: T;
   error?: string;
-  user?: User; // FIXED: This should be User type, not boolean
+  user?: User;
   total?: number;
   page?: number;
   limit?: number;
   pages?: number;
 }
 
-// Specific response types based on your backend responses
 export interface LoginResponse {
   success: boolean;
   message: string;
@@ -157,6 +153,8 @@ export interface ProfileResponse {
 }
 
 export interface ProductsResponse {
+  success: boolean;
+  data: Product[];
   products: Product[];
   pagination?: {
     total: number;
@@ -166,19 +164,16 @@ export interface ProductsResponse {
   };
 }
 
-export interface CategoriesResponse {
-  categories: Category[];
-}
+export interface CategoriesResponse extends ApiResponse<Category[]> {}
 
 export interface AuthenticatedRequest extends Request {
   user: {
     id: string;
     username: string;
-    isAdmin: boolean; // Changed from role to isAdmin
+    isAdmin: boolean;
   };
 }
 
-// Request Types
 export interface RegisterRequest {
   name: string;
   username: string;
@@ -229,7 +224,6 @@ export interface VerifyPaymentRequest {
   transactionId: string;
 }
 
-// Utility Types
 export type CreateUserInput = Omit<User, 'id' | 'createdAt' | 'updatedAt'>;
 export type CreateProductInput = Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'category'>;
 export type CreateOrderInput = Omit<Order, 'id' | 'orderItems' | 'createdAt' | 'updatedAt'>;
