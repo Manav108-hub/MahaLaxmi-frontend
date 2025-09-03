@@ -130,7 +130,7 @@ export default function CategoriesPage() {
           <div className="text-center py-12">
             <Package className="h-16 w-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-gray-600 mb-2">No Categories Found</h3>
-            <p className="text-gray-500">We currently don't have any categories available</p>
+            <p className="text-gray-500">We currently don&apos;t have any categories available</p>
             <button
               onClick={() => window.location.reload()}
               className="mt-4 px-4 py-2 bg-pink-500 text-white rounded hover:bg-pink-600 transition-colors"
