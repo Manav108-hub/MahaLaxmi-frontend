@@ -57,7 +57,23 @@ export const authService = {
   async getProfile(): Promise<ApiResponse<{ user: User }>> {
     try {
       const response = await api.get('/api/profile')
-      return response.data
+      // Handle different response structures
+      if (response.data.success && response.data.data) {
+        return {
+          success: true,
+          data: response.data.data,
+          message: 'Profile retrieved successfully'
+        }
+      }
+      
+      // If the response structure is different, try to extract the user data
+      const userData = response.data.user || response.data.data || response.data
+      
+      return {
+        success: true,
+        data: { user: userData },
+        message: 'Profile retrieved successfully'
+      }
     } catch (error: any) {
       return createErrorResponse<{ user: User }>(error, 'Failed to get profile')
     }
@@ -73,6 +89,20 @@ export const authService = {
   }): Promise<ApiResponse<{ user: User }>> {
     try {
       const response = await api.post('/api/user-details', userData)
+      
+      // Handle the response properly
+      if (response.data.success) {
+        // If the API returns the updated user data
+        const updatedUser = response.data.data || response.data.user
+        
+        return {
+          success: true,
+          data: { user: updatedUser },
+          message: response.data.message || 'Profile updated successfully'
+        }
+      }
+      
+      // If success is not explicitly true but we got a 200 response
       return response.data
     } catch (error: any) {
       return createErrorResponse<{ user: User }>(error, 'Failed to update profile')

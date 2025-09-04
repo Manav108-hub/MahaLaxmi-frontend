@@ -14,7 +14,7 @@ const initialState: CartState = { items: [], loading: false, error: null }
 
 export function useCart() {
   const [state, setState] = useState<CartState>(initialState)
-  const { isAuthenticated, loading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const mounted = useRef(true)
   const fetching = useRef(false)
   const prevAuth = useRef(isAuthenticated)
