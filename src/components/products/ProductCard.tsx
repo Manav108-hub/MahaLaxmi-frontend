@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Product } from '@/lib/types'
 import { formatPrice, generateSlug } from '@/lib/utils'
-import { ShoppingCart } from 'lucide-react'
+// Add Check import to resolve HMR issue
+import { ShoppingCart, Check } from 'lucide-react'
 import { useCart } from '@/hooks/useCart'
 import { useState } from 'react'
 
@@ -62,7 +63,11 @@ const PriceSection = ({ product, isAdding, onAddToCart }: {
       onClick={onAddToCart}
       disabled={isAdding || product.stock === 0}
     >
-      <ShoppingCart className="h-4 w-4" />
+      {isAdding ? (
+        <Check className="h-4 w-4" />
+      ) : (
+        <ShoppingCart className="h-4 w-4" />
+      )}
     </Button>
   </div>
 )
@@ -73,6 +78,7 @@ export default function ProductCard({ product }: ProductCardProps) {
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation() // Prevent navigation when clicking button
     setIsAdding(true)
     
     try {
