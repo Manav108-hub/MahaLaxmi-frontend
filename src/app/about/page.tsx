@@ -1,5 +1,51 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Award, Users, Clock, Heart } from 'lucide-react'
+import { Metadata } from 'next'
+
+// Enable static generation for better performance
+export const dynamic = 'force-static'
+
+// Cache metadata
+export const metadata: Metadata = {
+  title: 'About Us - MahaLaxmi Hardware | Our Story & Values',
+  description: 'Learn about MahaLaxmi Hardware\'s journey since 2010, our values of quality, service, reliability, and care. Trusted hardware partner serving the community.',
+  keywords: 'about mahalaxmi hardware, hardware store history, quality hardware, customer service, trusted hardware partner',
+  openGraph: {
+    title: 'About MahaLaxmi Hardware - Our Story & Values',
+    description: 'Discover our journey since 2010 and commitment to quality hardware products and exceptional service.',
+    type: 'website',
+  },
+}
+
+// Static data - cached outside component
+const companyValues = [
+  {
+    icon: Award,
+    title: 'Quality',
+    description: 'We source only the finest products from trusted manufacturers'
+  },
+  {
+    icon: Users,
+    title: 'Service', 
+    description: 'Exceptional customer service is at the heart of our business'
+  },
+  {
+    icon: Clock,
+    title: 'Reliability',
+    description: 'Dependable products and services you can count on'
+  },
+  {
+    icon: Heart,
+    title: 'Care',
+    description: 'We genuinely care about our customers and community'
+  }
+]
+
+const storyContent = [
+  "Founded in 2010, MahaLaxmi Hardware began as a small family business with a simple mission: to provide quality hardware products at affordable prices while delivering exceptional customer service.",
+  "Over the years, we have grown from a single store to a trusted name in the hardware industry, serving thousands of customers across the region. Our commitment to quality and customer satisfaction has remained unchanged throughout our journey.",
+  "Today, we continue to expand our product range and improve our services, always keeping our customers' needs at the heart of everything we do."
+]
 
 export default function AboutPage() {
   return (
@@ -21,20 +67,9 @@ export default function AboutPage() {
           <div>
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Our Story</h2>
             <div className="space-y-4 text-gray-600">
-              <p>
-                Founded in 2010, MahaLaxmi Hardware began as a small family business with a 
-                simple mission: to provide quality hardware products at affordable prices while 
-                delivering exceptional customer service.
-              </p>
-              <p>
-                Over the years, we have grown from a single store to a trusted name in the 
-                hardware industry, serving thousands of customers across the region. Our commitment 
-                to quality and customer satisfaction has remained unchanged throughout our journey.
-              </p>
-              <p>
-                Today, we continue to expand our product range and improve our services, always 
-                keeping our customers&apos; needs at the heart of everything we do.
-              </p>
+              {storyContent.map((paragraph, index) => (
+                <p key={index}>{paragraph}</p>
+              ))}
             </div>
           </div>
           <div className="bg-gradient-to-br from-pink-100 to-pink-200 rounded-lg p-8 flex items-center justify-center">
@@ -52,50 +87,20 @@ export default function AboutPage() {
         <div className="mb-16">
           <h2 className="text-3xl font-bold text-gray-800 text-center mb-12">Our Values</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <Card className="glass-effect border-pink-200">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Award className="h-6 w-6 text-pink-600" />
-                </div>
-                <h3 className="font-semibold text-gray-800 mb-2">Quality</h3>
-                <p className="text-gray-600 text-sm">
-                  We source only the finest products from trusted manufacturers
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="glass-effect border-pink-200">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Users className="h-6 w-6 text-pink-600" />
-                </div>
-                <h3 className="font-semibold text-gray-800 mb-2">Service</h3>
-                <p className="text-gray-600 text-sm">
-                  Exceptional customer service is at the heart of our business
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="glass-effect border-pink-200">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Clock className="h-6 w-6 text-pink-600" />
-                </div>
-                <h3 className="font-semibold text-gray-800 mb-2">Reliability</h3>
-                <p className="text-gray-600 text-sm">
-                  Dependable products and services you can count on
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="glass-effect border-pink-200">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Heart className="h-6 w-6 text-pink-600" />
-                </div>
-                <h3 className="font-semibold text-gray-800 mb-2">Care</h3>
-                <p className="text-gray-600 text-sm">
-                  We genuinely care about our customers and community
-                </p>
-              </CardContent>
-            </Card>
+            {companyValues.map((value, index) => {
+              const IconComponent = value.icon
+              return (
+                <Card key={index} className="glass-effect border-pink-200">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                      <IconComponent className="h-6 w-6 text-pink-600" />
+                    </div>
+                    <h3 className="font-semibold text-gray-800 mb-2">{value.title}</h3>
+                    <p className="text-gray-600 text-sm">{value.description}</p>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         </div>
 
@@ -108,7 +113,7 @@ export default function AboutPage() {
                 <p className="text-lg text-gray-700 leading-relaxed">
                   Our mission is to be the most trusted hardware partner in the region by providing 
                   high-quality products, competitive prices, and exceptional customer service. 
-                  We strive to support our community&apos;s construction and home improvement needs 
+                  We strive to support our community's construction and home improvement needs 
                   while building lasting relationships with our customers.
                 </p>
               </CardContent>

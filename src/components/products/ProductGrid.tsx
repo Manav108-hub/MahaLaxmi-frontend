@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { Filter, SortAsc, Grid3X3, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -25,6 +25,7 @@ interface ProductFilters {
   inStock?: boolean
 }
 
+// Cache static data outside component to prevent recreation
 const PRICE_RANGES = [
   { label: 'Under ₹500', value: '0-500' },
   { label: '₹500 - ₹1,000', value: '500-1000' },
@@ -42,7 +43,11 @@ const SORT_OPTIONS = [
   { label: 'Newest First', value: 'newest' }
 ]
 
-const LoadingSkeleton = () => (
+// Cache for filtered and sorted products
+const filterCache = new Map<string, Product[]>()
+
+// Memoized loading skeleton
+const LoadingSkeleton = memo(() => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     {Array.from({ length: 8 }).map((_, i) => (
       <Card key={i} className="animate-pulse">
@@ -55,18 +60,22 @@ const LoadingSkeleton = () => (
       </Card>
     ))}
   </div>
-)
+))
+LoadingSkeleton.displayName = 'LoadingSkeleton'
 
-const EmptyResults = ({ onClearFilters }: { onClearFilters: () => void }) => (
+// Memoized empty results
+const EmptyResults = memo(({ onClearFilters }: { onClearFilters: () => void }) => (
   <Card>
     <CardContent className="p-12 text-center">
       <p className="text-gray-500 mb-4">No products found matching your criteria.</p>
       <Button variant="outline" onClick={onClearFilters}>Clear Filters</Button>
     </CardContent>
   </Card>
-)
+))
+EmptyResults.displayName = 'EmptyResults'
 
-const FilterPanel = ({ 
+// Memoized filter panel
+const FilterPanel = memo(({ 
   filters, 
   categories, 
   onFilterUpdate, 
@@ -137,9 +146,11 @@ const FilterPanel = ({
       </Button>
     )}
   </div>
-)
+))
+FilterPanel.displayName = 'FilterPanel'
 
-const ViewModeToggle = ({ viewMode, onViewModeChange }: {
+// Memoized view mode toggle
+const ViewModeToggle = memo(({ viewMode, onViewModeChange }: {
   viewMode: 'grid' | 'list'
   onViewModeChange: (mode: 'grid' | 'list') => void
 }) => (
@@ -159,13 +170,22 @@ const ViewModeToggle = ({ viewMode, onViewModeChange }: {
       <List className="w-4 h-4" />
     </Button>
   </div>
-)
+))
+ViewModeToggle.displayName = 'ViewModeToggle'
 
-export default function ProductGrid({ products, loading = false, categories = [], onFilterChange }: ProductGridProps) {
+function ProductGrid({ products, loading = false, categories = [], onFilterChange }: ProductGridProps) {
   const [filters, setFilters] = useState<ProductFilters>({})
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
+  // Memoized filtered products with caching
   const filteredProducts = useMemo(() => {
+    const cacheKey = JSON.stringify({ filters, productsLength: products.length })
+    
+    // Check cache first
+    if (filterCache.has(cacheKey)) {
+      return filterCache.get(cacheKey)!
+    }
+
     let filtered = [...products]
 
     if (filters.category && filters.category !== 'all') {
@@ -197,23 +217,38 @@ export default function ProductGrid({ products, loading = false, categories = []
       })
     }
 
+    // Cache the result (limit cache size)
+    if (filterCache.size > 20) {
+      const firstKey = filterCache.keys().next().value
+      if (firstKey) {
+        filterCache.delete(firstKey)
+      }
+    }
+    filterCache.set(cacheKey, filtered)
+
     return filtered
   }, [products, filters])
 
+  // Memoized active filters count
   const activeFiltersCount = useMemo(() => 
     Object.values(filters).filter(value => value !== undefined && value !== 'all').length,
     [filters]
   )
 
+  // Memoized callbacks
+  const updateFilter = useCallback((key: keyof ProductFilters, value: any) => {
+    setFilters(prev => ({ ...prev, [key]: value === 'all' ? undefined : value }))
+  }, [])
+
+  const clearFilters = useCallback(() => setFilters({}), [])
+
+  const handleViewModeChange = useCallback((mode: 'grid' | 'list') => {
+    setViewMode(mode)
+  }, [])
+
   useEffect(() => {
     onFilterChange?.(filters)
   }, [filters, onFilterChange])
-
-  const updateFilter = (key: keyof ProductFilters, value: any) => {
-    setFilters(prev => ({ ...prev, [key]: value === 'all' ? undefined : value }))
-  }
-
-  const clearFilters = () => setFilters({})
 
   if (loading) return <LoadingSkeleton />
 
@@ -265,7 +300,7 @@ export default function ProductGrid({ products, loading = false, categories = []
             </SelectContent>
           </Select>
 
-          <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+          <ViewModeToggle viewMode={viewMode} onViewModeChange={handleViewModeChange} />
         </div>
       </div>
 
@@ -307,3 +342,5 @@ export default function ProductGrid({ products, loading = false, categories = []
     </div>
   )
 }
+
+export default memo(ProductGrid)
