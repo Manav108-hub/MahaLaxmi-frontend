@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Product, Category } from '@/lib/types'
 import { productService } from '@/services/productService'
@@ -24,7 +24,7 @@ const getCachedData = (key: string) => {
   return null;
 };
 
-const setCachedData = (key: string, data: any) => {
+const setCachedData = (key: string, data: unknown) => {
   pageCache.set(key, { data, timestamp: Date.now() });
 };
 
@@ -113,7 +113,8 @@ const FiltersSection = ({
   </div>
 )
 
-export default function ProductsPage() {
+// Component that uses useSearchParams - wrapped in Suspense
+function ProductsContent() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,8 +135,8 @@ export default function ProductsPage() {
         const cachedCategories = getCachedData('categories');
         
         if (cachedProducts && cachedCategories) {
-          setProducts(cachedProducts);
-          setCategories(cachedCategories);
+          setProducts(cachedProducts as Product[]);
+          setCategories(cachedCategories as Category[]);
           setSelectedCategory(categoryFromUrl);
           setLoading(false);
           return;
@@ -236,5 +237,14 @@ export default function ProductsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+// Main component with Suspense boundary
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton />}>
+      <ProductsContent />
+    </Suspense>
   )
 }
