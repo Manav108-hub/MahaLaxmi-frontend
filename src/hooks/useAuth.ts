@@ -1,154 +1,286 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { authService } from '@/services/authService'
 import { User } from '@/lib/types'
 
-// Enhanced cache for auth with longer stale times for better performance
-export const authKeys = {
-  all: ['auth'] as const,
-  user: () => [...authKeys.all, 'user'] as const,
-  profile: () => [...authKeys.all, 'profile'] as const,
+// Simple cache for auth data
+const authCache = new Map<string, { data: unknown; timestamp: number }>()
+const CACHE_TTL = 10 * 60 * 1000 // 10 minutes
+
+const getCachedData = (key: string) => {
+  const cached = authCache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data
+  }
+  return null
+}
+
+const setCachedData = (key: string, data: unknown) => {
+  authCache.set(key, { data, timestamp: Date.now() })
+}
+
+const clearCache = () => {
+  authCache.clear()
+}
+
+// Auth state management
+interface AuthState {
+  user: User | null
+  isLoading: boolean
+  isAuthenticated: boolean
+}
+
+const initialState: AuthState = {
+  user: null,
+  isLoading: false,
+  isAuthenticated: false
 }
 
 export function useCurrentUser() {
-  return useQuery({
-    queryKey: authKeys.user(),
-    queryFn: async () => {
+  const [state, setState] = useState(initialState)
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  const fetchUser = useCallback(async () => {
+    if (!mounted.current) return
+
+    // Check cache first
+    const cached = getCachedData('currentUser')
+    if (cached) {
+      setState({
+        user: cached as User,
+        isLoading: false,
+        isAuthenticated: !!cached
+      })
+      return
+    }
+
+    setState(prev => ({ ...prev, isLoading: true }))
+
+    try {
       const response = await authService.getCurrentUser()
-      if (response.success) {
-        return response.data
+      if (response.success && response.data && mounted.current) {
+        setCachedData('currentUser', response.data)
+        setState({
+          user: response.data,
+          isLoading: false,
+          isAuthenticated: true
+        })
+      } else if (mounted.current) {
+        setState({
+          user: null,
+          isLoading: false,
+          isAuthenticated: false
+        })
       }
-      throw new Error(response.error || 'Failed to get user')
-    },
-    retry: (failureCount, error: any) => {
-      // Don't retry on auth errors
-      if (error?.message?.includes('Not authenticated') || 
-          error?.response?.status === 401) {
-        return false
+    } catch {
+      if (mounted.current) {
+        setState({
+          user: null,
+          isLoading: false,
+          isAuthenticated: false
+        })
       }
-      return failureCount < 2
-    },
-    staleTime: 10 * 60 * 1000, // Extended to 10 minutes for better caching
-    gcTime: 20 * 60 * 1000,    // Extended to 20 minutes
-    refetchOnWindowFocus: false, // Prevent unnecessary refetches
-    refetchOnMount: false,       // Use cached data on mount
-  })
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchUser()
+  }, [fetchUser])
+
+  return {
+    data: state.user,
+    isLoading: state.isLoading,
+    isAuthenticated: state.isAuthenticated,
+    refetch: fetchUser,
+    isStale: false
+  }
 }
 
 export function useProfile() {
-  return useQuery({
-    queryKey: authKeys.profile(),
-    queryFn: async () => {
-      const response = await authService.getProfile()
-      if (response.success && response.data) {
-        // Extract user data from different possible response structures
-        const userData = response.data.user || response.data
-        return userData
-      }
-      throw new Error(response.error || 'Failed to get profile')
-    },
-    staleTime: 10 * 60 * 1000, // Extended for better caching
-    gcTime: 20 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
+  const [state, setState] = useState<{
+    data: User | null
+    isLoading: boolean
+    error: string | null
+  }>({
+    data: null,
+    isLoading: false,
+    error: null
   })
+  const mounted = useRef(true)
+
+  useEffect(() => {
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  const fetchProfile = useCallback(async () => {
+    if (!mounted.current) return
+
+    // Check cache first
+    const cached = getCachedData('profile')
+    if (cached) {
+      setState({
+        data: cached as User,
+        isLoading: false,
+        error: null
+      })
+      return
+    }
+
+    setState(prev => ({ ...prev, isLoading: true, error: null }))
+
+    try {
+      const response = await authService.getProfile()
+      if (response.success && response.data && mounted.current) {
+        const userData = response.data.user || response.data
+        setCachedData('profile', userData)
+        setState({
+          data: userData,
+          isLoading: false,
+          error: null
+        })
+      } else if (mounted.current) {
+        setState({
+          data: null,
+          isLoading: false,
+          error: response.error || 'Failed to get profile'
+        })
+      }
+    } catch (error: unknown) {
+      if (mounted.current) {
+        setState({
+          data: null,
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to get profile'
+        })
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchProfile()
+  }, [fetchProfile])
+
+  return {
+    data: state.data,
+    isLoading: state.isLoading,
+    error: state.error
+  }
 }
 
 export function useLogin() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: authService.login,
-    onSuccess: (data) => {
-      if (data.success && data.data) {
-        // Update user cache with new data
-        queryClient.setQueryData(authKeys.user(), data.data.user)
-        // Also update profile cache
-        queryClient.setQueryData(authKeys.profile(), data.data.user)
-        queryClient.invalidateQueries({ queryKey: authKeys.all })
-      }
-    },
-    onError: (error) => {
-      // Clear any stale auth data on login error
-      queryClient.removeQueries({ queryKey: authKeys.user() })
-      queryClient.removeQueries({ queryKey: authKeys.profile() })
-    },
+  const [state, setState] = useState({
+    isPending: false,
+    isError: false,
+    error: null as string | null
   })
-}
 
-export function useRegister() {
-  const queryClient = useQueryClient()
+  const mutateAsync = useCallback(async (credentials: { username: string; password: string }) => {
+    setState({ isPending: true, isError: false, error: null })
 
-  return useMutation({
-    mutationFn: authService.register,
-    onSuccess: (data) => {
-      if (data.success && data.data) {
-        queryClient.setQueryData(authKeys.user(), data.data.user)
-        queryClient.setQueryData(authKeys.profile(), data.data.user)
+    try {
+      const response = await authService.login(credentials)
+      if (response.success && response.data) {
+        // Update cache
+        setCachedData('currentUser', response.data)
+        setCachedData('profile', response.data)
+        setState({ isPending: false, isError: false, error: null })
+        return response
+      } else {
+        throw new Error(response.message || 'Login failed')
       }
-    },
-  })
+    } catch (error: unknown) {
+      clearCache()
+      const errorMessage = error instanceof Error ? error.message : 'Login failed'
+      setState({ 
+        isPending: false, 
+        isError: true, 
+        error: errorMessage 
+      })
+      throw error
+    }
+  }, [])
+
+  return {
+    mutateAsync,
+    isPending: state.isPending,
+    isError: state.isError,
+    error: state.error
+  }
 }
 
 export function useUpdateProfile() {
-  const queryClient = useQueryClient()
+  const [state, setState] = useState({
+    isPending: false,
+    isError: false,
+    error: null as string | null
+  })
 
-  return useMutation({
-    mutationFn: authService.updateProfile,
-    onSuccess: (data) => {
-      if (data.success && data.data) {
-        const updatedUser = data.data.user || data.data
-        
-        // Update both user and profile caches with the same data
-        queryClient.setQueryData(authKeys.user(), updatedUser)
-        queryClient.setQueryData(authKeys.profile(), updatedUser)
-        
-        // Invalidate queries to ensure fresh data
-        queryClient.invalidateQueries({ queryKey: authKeys.profile() })
-        queryClient.invalidateQueries({ queryKey: authKeys.user() })
+  const mutateAsync = useCallback(async (userData: Record<string, unknown>) => {
+    setState({ isPending: true, isError: false, error: null })
+
+    try {
+      const response = await authService.updateProfile(userData)
+      if (response.success) {
+        // Clear cache to force refresh
+        clearCache()
+        setState({ isPending: false, isError: false, error: null })
+        return response
+      } else {
+        throw new Error(response.message || 'Update failed')
       }
-    },
-    onError: (error: any) => {
-      console.error('Profile update error:', error)
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Update failed'
+      setState({ 
+        isPending: false, 
+        isError: true, 
+        error: errorMessage 
+      })
       throw error
-    },
-  })
-}
+    }
+  }, [])
 
-export function useLogout() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: authService.logout,
-    onSuccess: () => {
-      // Clear all cached data on logout
-      queryClient.clear()
-    },
-    onSettled: () => {
-      // Always clear auth data, even on error
-      queryClient.removeQueries({ queryKey: authKeys.all })
-    },
-  })
+  return {
+    mutateAsync,
+    isPending: state.isPending,
+    isError: state.isError,
+    error: state.error
+  }
 }
 
 export function useAuth() {
   const currentUser = useCurrentUser()
   const loginMutation = useLogin()
-  const logoutMutation = useLogout()
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  const logout = useCallback(async () => {
+    setIsLoggingOut(true)
+    try {
+      await authService.logout()
+      clearCache()
+      // Force a page reload to clear all state after logout
+      window.location.href = '/login'
+    } catch (error: unknown) {
+      console.error('Logout error:', error)
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }, [])
 
   return {
     user: currentUser.data,
     isLoading: currentUser.isLoading,
-    isAuthenticated: !!currentUser.data,
+    isAuthenticated: currentUser.isAuthenticated,
     login: loginMutation.mutateAsync,
-    logout: async () => {
-      await logoutMutation.mutateAsync()
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('user')
-      }
-    },
+    logout,
     isLoggingIn: loginMutation.isPending,
-    isLoggingOut: logoutMutation.isPending,
-    // Additional caching utilities
+    isLoggingOut,
     refetchUser: currentUser.refetch,
     isUserStale: currentUser.isStale,
   }
