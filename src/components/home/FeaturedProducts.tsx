@@ -7,6 +7,22 @@ import { productService } from '@/services/productService'
 import ProductCard from '@/components/products/ProductCard'
 import { Button } from '@/components/ui/button'
 
+// Simple cache for featured products
+const featuredCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCachedFeatured = () => {
+  const cached = featuredCache.get('featured');
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCachedFeatured = (data: Product[]) => {
+  featuredCache.set('featured', { data, timestamp: Date.now() });
+};
+
 const LoadingSkeleton = () => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
     {Array.from({ length: 8 }).map((_, i) => (
@@ -43,9 +59,21 @@ export default function FeaturedProducts() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
+        // Check cache first
+        const cachedProducts = getCachedFeatured();
+        if (cachedProducts) {
+          setProducts(cachedProducts);
+          setLoading(false);
+          return;
+        }
+        
         const response = await productService.getProducts()
         if (response.success && response.data) {
-          setProducts(response.data.slice(0, 8))
+          const featuredProducts = response.data.slice(0, 8);
+          setProducts(featuredProducts)
+          
+          // Cache the result
+          setCachedFeatured(featuredProducts);
         }
       } catch (error) {
         console.error('Failed to fetch products:', error)

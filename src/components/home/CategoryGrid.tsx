@@ -7,6 +7,22 @@ import { productService } from '@/services/productService'
 import { Category } from '@/lib/types'
 import { ArrowRight } from 'lucide-react'
 
+// Simple cache for categories
+const categoryCache = new Map();
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes for categories
+
+const getCachedCategories = () => {
+  const cached = categoryCache.get('categories');
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCachedCategories = (data: Category[]) => {
+  categoryCache.set('categories', { data, timestamp: Date.now() });
+};
+
 export default function CategoryGrid() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -14,9 +30,20 @@ export default function CategoryGrid() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
+        // Check cache first
+        const cachedCategories = getCachedCategories();
+        if (cachedCategories) {
+          setCategories(cachedCategories);
+          setLoading(false);
+          return;
+        }
+        
         const response = await productService.getCategories()
         if (response.success && response.data) {
           setCategories(response.data)
+          
+          // Cache the result
+          setCachedCategories(response.data);
         }
       } catch (error) {
         console.error('Failed to fetch categories:', error)

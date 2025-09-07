@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { authService } from '@/services/authService'
 import { User } from '@/lib/types'
 
+// Enhanced cache for auth with longer stale times for better performance
 export const authKeys = {
   all: ['auth'] as const,
   user: () => [...authKeys.all, 'user'] as const,
@@ -26,8 +27,10 @@ export function useCurrentUser() {
       }
       return failureCount < 2
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,   // 10 minutes
+    staleTime: 10 * 60 * 1000, // Extended to 10 minutes for better caching
+    gcTime: 20 * 60 * 1000,    // Extended to 20 minutes
+    refetchOnWindowFocus: false, // Prevent unnecessary refetches
+    refetchOnMount: false,       // Use cached data on mount
   })
 }
 
@@ -43,8 +46,10 @@ export function useProfile() {
       }
       throw new Error(response.error || 'Failed to get profile')
     },
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // Extended for better caching
+    gcTime: 20 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   })
 }
 
@@ -129,7 +134,6 @@ export function useAuth() {
   const currentUser = useCurrentUser()
   const loginMutation = useLogin()
   const logoutMutation = useLogout()
-  const queryClient = useQueryClient()
 
   return {
     user: currentUser.data,
@@ -144,5 +148,8 @@ export function useAuth() {
     },
     isLoggingIn: loginMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
+    // Additional caching utilities
+    refetchUser: currentUser.refetch,
+    isUserStale: currentUser.isStale,
   }
 }

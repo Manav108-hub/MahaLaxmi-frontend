@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
 import Image from 'next/image'
 import { ShoppingCart, Heart, Share2, Minus, Plus, Truck, Shield, RotateCcw, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
@@ -22,25 +22,41 @@ interface ProductDetailsProps {
   slug?: string
 }
 
-const sanitizeProduct = (product: Product): Product => ({
-  ...product,
-  name: product.name?.replace(/^["']|["']$/g, '').trim() || '',
-  description: product.description?.replace(/^["']|["']$/g, '').trim() || '',
-  stock: Number(product.stock) || 0,
-  price: Number(product.price) || 0,
-  images: Array.isArray(product.images) ? product.images : [],
-  category: product.category || { id: '', name: 'Uncategorized', createdAt: '', updatedAt: '' }
-})
+// Cache for sanitized products
+const sanitizedProductCache = new Map<string, Product>()
 
-const LoadingState = () => (
+const sanitizeProduct = (product: Product): Product => {
+  const cacheKey = product.id
+  
+  if (sanitizedProductCache.has(cacheKey)) {
+    return sanitizedProductCache.get(cacheKey)!
+  }
+  
+  const sanitized = {
+    ...product,
+    name: product.name?.replace(/^["']|["']$/g, '').trim() || '',
+    description: product.description?.replace(/^["']|["']$/g, '').trim() || '',
+    stock: Number(product.stock) || 0,
+    price: Number(product.price) || 0,
+    images: Array.isArray(product.images) ? product.images : [],
+    category: product.category || { id: '', name: 'Uncategorized', createdAt: '', updatedAt: '' }
+  }
+  
+  sanitizedProductCache.set(cacheKey, sanitized)
+  return sanitized
+}
+
+// Memoized static components
+const LoadingState = memo(() => (
   <div className="container mx-auto px-4 py-8">
     <div className="flex items-center justify-center h-64">
       <LoadingSpinner size="lg" />
     </div>
   </div>
-)
+))
+LoadingState.displayName = 'LoadingState'
 
-const ErrorState = ({ error, onBrowseProducts }: { error: string; onBrowseProducts: () => void }) => (
+const ErrorState = memo(({ error, onBrowseProducts }: { error: string; onBrowseProducts: () => void }) => (
   <div className="container mx-auto px-4 py-8">
     <div className="text-center py-16">
       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-pink-100 mb-4">
@@ -53,15 +69,19 @@ const ErrorState = ({ error, onBrowseProducts }: { error: string; onBrowseProduc
       </Button>
     </div>
   </div>
-)
+))
+ErrorState.displayName = 'ErrorState'
 
-const ImageGallery = ({ images, productName, selectedImage, onImageSelect }: {
+const ImageGallery = memo(({ images, productName, selectedImage, onImageSelect }: {
   images: string[]
   productName: string
   selectedImage: number
   onImageSelect: (index: number) => void
 }) => {
-  const displayImages = images.length ? images : ['/placeholder-product.jpg']
+  const displayImages = useMemo(() => 
+    images.length ? images : ['/placeholder-product.jpg'], 
+    [images]
+  )
   
   return (
     <div className="space-y-4">
@@ -73,6 +93,8 @@ const ImageGallery = ({ images, productName, selectedImage, onImageSelect }: {
           className="object-cover"
           priority
           sizes="(max-width: 768px) 100vw, 50vw"
+          placeholder="blur"
+          blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
         />
       </div>
 
@@ -86,16 +108,24 @@ const ImageGallery = ({ images, productName, selectedImage, onImageSelect }: {
                 selectedImage === index ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'
               }`}
             >
-              <Image src={image} alt={`${productName} ${index + 1}`} fill className="object-cover" sizes="80px" />
+              <Image 
+                src={image} 
+                alt={`${productName} ${index + 1}`} 
+                fill 
+                className="object-cover" 
+                sizes="80px"
+                loading="lazy"
+              />
             </button>
           ))}
         </div>
       )}
     </div>
   )
-}
+})
+ImageGallery.displayName = 'ImageGallery'
 
-const QuantitySelector = ({ quantity, maxQuantity, onIncrement, onDecrement }: {
+const QuantitySelector = memo(({ quantity, maxQuantity, onIncrement, onDecrement }: {
   quantity: number
   maxQuantity: number
   onIncrement: () => void
@@ -110,9 +140,10 @@ const QuantitySelector = ({ quantity, maxQuantity, onIncrement, onDecrement }: {
       <Plus className="w-4 h-4" />
     </Button>
   </div>
-)
+))
+QuantitySelector.displayName = 'QuantitySelector'
 
-const ProductFeatures = () => (
+const ProductFeatures = memo(() => (
   <div className="grid gap-2 text-sm">
     <div className="flex items-center gap-2 text-gray-700">
       <Truck className="text-green-600 w-4 h-4" />
@@ -127,11 +158,14 @@ const ProductFeatures = () => (
       Easy 7-day return policy
     </div>
   </div>
-)
+))
+ProductFeatures.displayName = 'ProductFeatures'
 
-export default function ProductDetails({ product: initialProduct, error: initialError, loading: initialLoading = false, slug }: ProductDetailsProps) {
+function ProductDetails({ product: initialProduct, error: initialError, loading: initialLoading = false, slug }: ProductDetailsProps) {
   const router = useRouter()
-  const [product, setProduct] = useState<Product | null>(initialProduct ? sanitizeProduct(initialProduct) : null)
+  const [product, setProduct] = useState<Product | null>(
+    initialProduct ? sanitizeProduct(initialProduct) : null
+  )
   const [error, setError] = useState<string | null>(initialError || null)
   const [loading, setLoading] = useState(initialLoading)
   const [selectedImage, setSelectedImage] = useState(0)
@@ -139,6 +173,12 @@ export default function ProductDetails({ product: initialProduct, error: initial
   const [isWishlisted, setIsWishlisted] = useState(false)
   
   const { addToCart, loading: cartLoading } = useCart()
+
+  // Memoized expensive calculations
+  const isOutOfStock = useMemo(() => !product || product.stock <= 0, [product])
+  const canAddToCart = useMemo(() => !isOutOfStock && !cartLoading && product !== null, [isOutOfStock, cartLoading, product])
+  const maxQuantityReached = useMemo(() => product ? quantity >= product.stock : true, [quantity, product])
+  const formattedPrice = useMemo(() => product ? formatPrice(product.price) : '', [product])
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -176,10 +216,6 @@ export default function ProductDetails({ product: initialProduct, error: initial
   }, [slug, router, initialProduct])
 
   useEffect(() => setSelectedImage(0), [product?.id])
-
-  const isOutOfStock = useMemo(() => !product || product.stock <= 0, [product])
-  const canAddToCart = useMemo(() => !isOutOfStock && !cartLoading && product !== null, [isOutOfStock, cartLoading, product])
-  const maxQuantityReached = useMemo(() => product ? quantity >= product.stock : true, [quantity, product])
 
   const handleAddToCart = useCallback(async () => {
     if (!product || !canAddToCart) return
@@ -223,8 +259,10 @@ export default function ProductDetails({ product: initialProduct, error: initial
     toast.success(isWishlisted ? 'Removed from wishlist' : 'Added to wishlist')
   }, [isWishlisted])
 
+  const handleBrowseProducts = useCallback(() => router.push('/products'), [router])
+
   if (loading) return <LoadingState />
-  if (error || !product) return <ErrorState error={error || 'Product not found'} onBrowseProducts={() => router.push('/products')} />
+  if (error || !product) return <ErrorState error={error || 'Product not found'} onBrowseProducts={handleBrowseProducts} />
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -242,7 +280,7 @@ export default function ProductDetails({ product: initialProduct, error: initial
             <h1 className="text-3xl font-bold text-gray-900">{product.name}</h1>
           </div>
 
-          <div className="text-3xl font-bold text-pink-600">{formatPrice(product.price)}</div>
+          <div className="text-3xl font-bold text-pink-600">{formattedPrice}</div>
 
           <Alert className={isOutOfStock ? "bg-red-50" : "bg-green-50"}>
             <AlertDescription className={isOutOfStock ? "text-red-600" : "text-green-600"}>
@@ -287,3 +325,5 @@ export default function ProductDetails({ product: initialProduct, error: initial
     </div>
   )
 }
+
+export default memo(ProductDetails)

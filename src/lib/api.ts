@@ -3,6 +3,14 @@ import axios, { AxiosError } from 'axios'
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 const PUBLIC_ROUTES = ['/api/login', '/api/register', '/api/refresh-token', '/api/products', '/api/categories']
 
+// Simple cache for GET requests only
+const cache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCacheKey = (url: string, params: any) => {
+  return `${url}_${JSON.stringify(params || {})}`;
+};
+
 const isPublicRoute = (url: string) => PUBLIC_ROUTES.some(route => url.startsWith(route))
 const isLoginPage = () => typeof window !== 'undefined' && window.location.pathname === '/login'
 const redirectToLogin = () => !isLoginPage() && (window.location.href = '/login')
@@ -15,9 +23,50 @@ const api = axios.create({
   withCredentials: true
 })
 
+// Add simple request caching for GET requests
+api.interceptors.request.use(
+  async (config) => {
+    // Only cache GET requests for products and categories
+    if (config.method === 'get' && 
+        (config.url?.includes('/products') || config.url?.includes('/categories'))) {
+      
+      const cacheKey = getCacheKey(config.url, config.params);
+      const cached = cache.get(cacheKey);
+      
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        // Return cached data by throwing a special error that we'll catch
+        throw { 
+          cached: true, 
+          data: cached.data,
+          config
+        };
+      }
+    }
+    return config;
+  }
+);
+
 api.interceptors.response.use(
-  response => response,
-  async (error: AxiosError) => {
+  response => {
+    // Cache successful GET responses for products and categories
+    if (response.config.method === 'get' && 
+        (response.config.url?.includes('/products') || response.config.url?.includes('/categories'))) {
+      
+      const cacheKey = getCacheKey(response.config.url, response.config.params);
+      cache.set(cacheKey, {
+        data: response,
+        timestamp: Date.now()
+      });
+    }
+    return response;
+  },
+  async (error: any) => {
+    // Handle cached responses
+    if (error.cached) {
+      return Promise.resolve(error.data);
+    }
+
+    // Existing auth logic - UNCHANGED
     const { config: originalRequest, response } = error
     const url = originalRequest?.url || ''
 

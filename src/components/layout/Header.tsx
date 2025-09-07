@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { ShoppingCart, Menu, X, User, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,23 +14,56 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useCart } from '@/hooks/useCart'
 
-export default function Header() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { logout, isAuthenticated } = useAuth()
-  const { getTotalItems } = useCart()
-
-  type NavItem = {
-  name: string
-  href: string
-}
-
-  
-const navigation: NavItem[] = [
+// Cache navigation items since they rarely change
+const navigationCache = [
   { name: 'Home', href: '/' },
   { name: 'About', href: '/about' },
   { name: 'Categories', href: '/categories' },
   { name: 'Products', href: '/products' },
 ]
+
+export default function Header() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { logout, isAuthenticated } = useAuth()
+  const { getTotalItems } = useCart()
+
+  // Memoize cart count to prevent unnecessary re-renders
+  const cartItemCount = useMemo(() => {
+    try {
+      return getTotalItems() || 0
+    } catch {
+      return 0
+    }
+  }, [getTotalItems])
+
+  // Memoize navigation rendering
+  const navigationItems = useMemo(() => 
+    navigationCache.map((item) => (
+      <Link
+        key={item.name}
+        href={item.href}
+        className="text-gray-700 hover:text-pink-600 transition-colors font-medium"
+      >
+        {item.name}
+      </Link>
+    )), 
+    []
+  )
+
+  // Memoize mobile navigation
+  const mobileNavigationItems = useMemo(() =>
+    navigationCache.map((item) => (
+      <Link
+        key={item.name}
+        href={item.href}
+        className="px-4 py-2 text-gray-700 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
+        onClick={() => setIsMenuOpen(false)}
+      >
+        {item.name}
+      </Link>
+    )),
+    []
+  )
 
   return (
     <header className="sticky top-0 z-50 glass-effect border-b border-pink-200">
@@ -46,15 +79,7 @@ const navigation: NavItem[] = [
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            {navigation.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className="text-gray-700 hover:text-pink-600 transition-colors font-medium"
-              >
-                {item.name}
-              </Link>
-            ))}
+            {navigationItems}
           </nav>
 
           {/* Actions */}
@@ -63,9 +88,9 @@ const navigation: NavItem[] = [
             <Link href="/cart" className="relative">
               <Button variant="ghost" size="icon" className="hover:bg-pink-100">
                 <ShoppingCart className="h-5 w-5" />
-                {getTotalItems() > 0 && (
+                {cartItemCount > 0 && (
                   <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-pink-500">
-                    {getTotalItems()}
+                    {cartItemCount}
                   </Badge>
                 )}
               </Button>
@@ -125,16 +150,7 @@ const navigation: NavItem[] = [
         {isMenuOpen && (
           <div className="md:hidden py-4 border-t border-pink-200">
             <nav className="flex flex-col space-y-2">
-              {navigation.map((item) => (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className="px-4 py-2 text-gray-700 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {item.name}
-                </Link>
-              ))}
+              {mobileNavigationItems}
               {isAuthenticated ? (
                 <>
                   <Link

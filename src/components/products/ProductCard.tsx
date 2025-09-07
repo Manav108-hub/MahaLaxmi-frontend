@@ -7,17 +7,17 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Product } from '@/lib/types'
 import { formatPrice, generateSlug } from '@/lib/utils'
-// Add Check import to resolve HMR issue
 import { ShoppingCart, Check } from 'lucide-react'
 import { useCart } from '@/hooks/useCart'
-import { useState } from 'react'
+import { useState, memo, useCallback, useMemo } from 'react'
 
 interface ProductCardProps {
   product: Product
   layout?: 'grid' | 'list'
 }
 
-const ProductImage = ({ product }: { product: Product }) => (
+// Memoized sub-components to prevent unnecessary re-renders
+const ProductImage = memo(({ product }: { product: Product }) => (
   <div className="aspect-square bg-gradient-to-br from-pink-100 to-pink-200 flex items-center justify-center">
     {product.images?.length > 0 ? (
       <Image
@@ -26,6 +26,10 @@ const ProductImage = ({ product }: { product: Product }) => (
         width={300}
         height={300}
         className="object-cover w-full h-full"
+        loading="lazy"
+        placeholder="blur"
+        blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
       />
     ) : (
       <div className="text-pink-400 text-4xl font-bold">
@@ -33,28 +37,33 @@ const ProductImage = ({ product }: { product: Product }) => (
       </div>
     )}
   </div>
-)
+))
+ProductImage.displayName = 'ProductImage'
 
-const StockBadge = ({ stock }: { stock: number }) => 
+const StockBadge = memo(({ stock }: { stock: number }) => 
   stock <= 5 ? (
     <Badge className="absolute top-2 right-2 bg-orange-500">Low Stock</Badge>
   ) : null
+)
+StockBadge.displayName = 'StockBadge'
 
-const ProductInfo = ({ product }: { product: Product }) => (
+const ProductInfo = memo(({ product }: { product: Product }) => (
   <div className="mb-2">
     <h3 className="font-semibold text-gray-800 mb-1 line-clamp-2">{product.name}</h3>
     <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
   </div>
-)
+))
+ProductInfo.displayName = 'ProductInfo'
 
-const PriceSection = ({ product, isAdding, onAddToCart }: {
+const PriceSection = memo(({ product, isAdding, onAddToCart, formattedPrice }: {
   product: Product
   isAdding: boolean
   onAddToCart: (e: React.MouseEvent) => void
+  formattedPrice: string
 }) => (
   <div className="flex items-center justify-between">
     <div>
-      <p className="text-lg font-bold text-pink-600">{formatPrice(product.price)}</p>
+      <p className="text-lg font-bold text-pink-600">{formattedPrice}</p>
       <p className="text-xs text-gray-500">{product.stock} in stock</p>
     </div>
     <Button
@@ -70,13 +79,19 @@ const PriceSection = ({ product, isAdding, onAddToCart }: {
       )}
     </Button>
   </div>
-)
+))
+PriceSection.displayName = 'PriceSection'
 
-export default function ProductCard({ product }: ProductCardProps) {
+function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart()
   const [isAdding, setIsAdding] = useState(false)
 
-  const handleAddToCart = async (e: React.MouseEvent) => {
+  // Memoize expensive calculations
+  const formattedPrice = useMemo(() => formatPrice(product.price), [product.price])
+  const productSlug = useMemo(() => generateSlug(product.name), [product.name])
+  const productUrl = useMemo(() => `/products/${productSlug}`, [productSlug])
+
+  const handleAddToCart = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation() // Prevent navigation when clicking button
     setIsAdding(true)
@@ -88,10 +103,10 @@ export default function ProductCard({ product }: ProductCardProps) {
     } finally {
       setIsAdding(false)
     }
-  }
+  }, [addToCart, product.id])
 
   return (
-    <Link href={`/products/${generateSlug(product.name)}`}>
+    <Link href={productUrl}>
       <Card className="glass-effect hover:shadow-lg transition-all duration-300 hover:scale-105 cursor-pointer border-pink-200 overflow-hidden">
         <div className="relative">
           <ProductImage product={product} />
@@ -103,9 +118,13 @@ export default function ProductCard({ product }: ProductCardProps) {
             product={product}
             isAdding={isAdding}
             onAddToCart={handleAddToCart}
+            formattedPrice={formattedPrice}
           />
         </CardContent>
       </Card>
     </Link>
   )
 }
+
+// Memoize the entire component to prevent unnecessary re-renders
+export default memo(ProductCard)

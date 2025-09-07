@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -28,11 +28,11 @@ export default function LoginPage() {
     }
   }, [])
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
-    if (error) setError('')
-  }
+    setError('')
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,14 +40,8 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const response = await authService.login(formData)
-      
-      if (response.success && response.user) {
-        login(response.user)
-        router.push('/')
-      } else {
-        throw new Error(response.message || 'Login failed')
-      }
+      await login(formData)
+      router.push('/')
     } catch (err: any) {
       const error = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please try again.'
       setError(error)
@@ -55,48 +49,6 @@ export default function LoginPage() {
       setLoading(false)
     }
   }
-
-  const InputField = ({ 
-    id, 
-    name, 
-    type, 
-    placeholder, 
-    icon: Icon, 
-    showToggle 
-  }: {
-    id: string
-    name: keyof FormData
-    type: string
-    placeholder: string
-    icon: React.ComponentType<{ className?: string }>
-    showToggle?: boolean
-  }) => (
-    <div className="space-y-2">
-      <Label htmlFor={id} className="text-gray-700">{id.charAt(0).toUpperCase() + id.slice(1)}</Label>
-      <div className="relative">
-        <Input
-          id={id}
-          name={name}
-          type={showToggle && showPassword ? 'text' : type}
-          placeholder={placeholder}
-          value={formData[name]}
-          onChange={handleInputChange}
-          className="pl-10 pr-10 border-pink-200 focus:border-pink-500 focus:ring-pink-500"
-          required
-        />
-        <Icon className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-        {showToggle && (
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-          >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
-        )}
-      </div>
-    </div>
-  )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white flex items-center justify-center p-4">
@@ -122,22 +74,46 @@ export default function LoginPage() {
                 </Alert>
               )}
 
-              <InputField 
-                id="username" 
-                name="username" 
-                type="text" 
-                placeholder="Enter your username" 
-                icon={Mail} 
-              />
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-gray-700">Username</Label>
+                <div className="relative">
+                  <Input
+                    id="username"
+                    name="username"
+                    type="text"
+                    placeholder="Enter your username"
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    className="pl-10 pr-10 border-pink-200 focus:border-pink-500 focus:ring-pink-500"
+                    required
+                  />
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                </div>
+              </div>
               
-              <InputField 
-                id="password" 
-                name="password" 
-                type="password" 
-                placeholder="Enter your password" 
-                icon={Lock} 
-                showToggle 
-              />
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-gray-700">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    className="pl-10 pr-10 border-pink-200 focus:border-pink-500 focus:ring-pink-500"
+                    required
+                  />
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">

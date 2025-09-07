@@ -9,6 +9,22 @@ import { ArrowLeft } from 'lucide-react'
 import ProductDetails from '@/components/products/ProductDetails'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
+// Simple cache for product details
+const productCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCachedProduct = (slug: string) => {
+  const cached = productCache.get(slug);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCachedProduct = (slug: string, data: Product) => {
+  productCache.set(slug, { data, timestamp: Date.now() });
+};
+
 const LoadingState = () => (
   <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white flex items-center justify-center">
     <LoadingSpinner size="lg" />
@@ -26,15 +42,15 @@ const ErrorState = ({ error, onGoBack, onBrowseProducts }: {
       <p className="text-gray-600">{error || 'The product you requested could not be found.'}</p>
       <div className="flex justify-center gap-4 pt-4">
         <Button 
-          variant="outline" 
-          onClick={onGoBack} 
+          variant="outline"
+          onClick={onGoBack}
           className="border-pink-300 text-pink-600 hover:bg-pink-50"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Go Back
         </Button>
         <Button 
-          variant="default" 
+          variant="default"
           onClick={onBrowseProducts}
           className="bg-pink-600 hover:bg-pink-700"
         >
@@ -64,8 +80,19 @@ export default function ProductDetailsPage() {
         setLoading(true)
         setError(null)
         
+        // Check cache first
+        const cachedProduct = getCachedProduct(slug);
+        if (cachedProduct) {
+          setProduct(cachedProduct);
+          setLoading(false);
+          return;
+        }
+        
         const productData = await productService.getProductBySlug(slug)
         setProduct(productData)
+        
+        // Cache the result
+        setCachedProduct(slug, productData);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load product details'
         setError(errorMessage)
@@ -81,7 +108,7 @@ export default function ProductDetailsPage() {
   const handleBrowseProducts = () => router.push('/products')
 
   if (loading) return <LoadingState />
-  
+   
   if (error || !product) {
     return (
       <ErrorState 

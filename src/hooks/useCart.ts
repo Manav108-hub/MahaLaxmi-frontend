@@ -60,14 +60,24 @@ export function useCart() {
     }
   }, [isAuthenticated, authLoading, safeSetState])
 
+  // Fixed: Added fetchCart to dependency array and improved initial load logic
   useEffect(() => {
     const authChanged = prevAuth.current !== isAuthenticated
     prevAuth.current = isAuthenticated
 
-    if (!authLoading && (authChanged || (isAuthenticated && state.items.length === 0))) {
+    if (!authLoading) {
+      if (authChanged || (isAuthenticated && state.items.length === 0)) {
+        fetchCart()
+      }
+    }
+  }, [isAuthenticated, authLoading, fetchCart, state.items.length])
+
+  // Fixed: Force initial cart fetch when component mounts and user is authenticated
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
       fetchCart()
     }
-  }, [isAuthenticated, authLoading])
+  }, [authLoading, isAuthenticated, fetchCart])
 
   const createCartAction = useCallback(
     <T extends any[]>(
@@ -88,13 +98,17 @@ export function useCart() {
         
         if (!res.success) {
           toast.error(res.message ?? errorMsg)
-          if (optimisticUpdate) await fetchCart()
+          // Always refresh after failed optimistic update
+          await fetchCart()
           return res
         }
 
-        if (!optimisticUpdate) await fetchCart()
-        
+        // Update local state immediately and fetch in background
+        if (optimisticUpdate) {
+          safeSetState(prev => optimisticUpdate(prev, ...args))
+        }
         toast.success(successMsg)
+        fetchCart()
         return res
       } catch (err) {
         const error = err instanceof Error ? err.message : errorMsg
@@ -102,17 +116,12 @@ export function useCart() {
           toast.error(errorMsg)
           safeSetState(prev => ({ ...prev, error: errorMsg }))
         }
-        if (optimisticUpdate) await fetchCart()
+        // Refresh cart on error to sync state
+        setTimeout(() => fetchCart(), 100)
         throw err
       }
     },
     [isAuthenticated, fetchCart, safeSetState]
-  )
-
-  const addToCart = createCartAction(
-    (productId: string, quantity = 1) => cartService.addToCart(productId, quantity),
-    'Item added to cart',
-    'Failed to add item to cart'
   )
 
   const updateQuantity = createCartAction(
@@ -129,6 +138,54 @@ export function useCart() {
       )
     })
   )
+
+  const addToCart = useCallback(async (productId: string, quantity = 1) => {
+    if (!isAuthenticated) {
+      toast.error('Please login to add items to cart')
+      return { success: false, message: 'User not authenticated' }
+    }
+
+    try {
+      // Check if item already exists in cart
+      const existingItem = state.items.find(item => item.productId === productId)
+      
+      if (existingItem) {
+        // If item exists, update its quantity instead
+        const newQuantity = existingItem.quantity + quantity
+        return await updateQuantity(existingItem.id, newQuantity)
+      }
+
+      const res = await cartService.addToCart(productId, quantity)
+      
+      if (!res.success || !res.data) {
+        toast.error(res.message ?? 'Failed to add item to cart')
+        return res
+      }
+
+      // Optimistically update local state
+      const newItem: CartItem = {
+        id: res.data.id,
+        productId,
+        quantity,
+        product: res.data.product,
+        userId: res.data.userId,
+        createdAt: res.data.createdAt,
+        updatedAt: res.data.updatedAt
+      }
+
+      safeSetState(prev => ({
+        ...prev,
+        items: [...prev.items, newItem]
+      }))
+      
+      toast.success('Item added to cart')
+      return res
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Failed to add item to cart'
+      toast.error(error)
+      throw err
+    }
+  }, [isAuthenticated, state.items, updateQuantity])
 
   const removeItem = createCartAction(
     (itemId: string) => cartService.removeFromCart(itemId),

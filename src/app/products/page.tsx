@@ -12,6 +12,22 @@ import { Search, Filter } from 'lucide-react'
 
 type SortOption = 'name' | 'price-low' | 'price-high'
 
+// Simple cache for this page
+const pageCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCachedData = (key: string) => {
+  const cached = pageCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCachedData = (key: string, data: any) => {
+  pageCache.set(key, { data, timestamp: Date.now() });
+};
+
 const LoadingSkeleton = () => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
     {Array.from({ length: 8 }).map((_, i) => (
@@ -113,6 +129,18 @@ export default function ProductsPage() {
       try {
         setLoading(true)
         
+        // Check cache first
+        const cachedProducts = getCachedData('products');
+        const cachedCategories = getCachedData('categories');
+        
+        if (cachedProducts && cachedCategories) {
+          setProducts(cachedProducts);
+          setCategories(cachedCategories);
+          setSelectedCategory(categoryFromUrl);
+          setLoading(false);
+          return;
+        }
+        
         const [productsRes, categoriesRes] = await Promise.all([
           productService.getProducts(),
           productService.getCategories()
@@ -120,14 +148,17 @@ export default function ProductsPage() {
 
         if (Array.isArray(productsRes.products)) {
           setProducts(productsRes.products)
+          setCachedData('products', productsRes.products);
         } else {
           console.error('Unexpected products data format:', productsRes)
         }
 
         if (categoriesRes.success && Array.isArray(categoriesRes.data)) {
           setCategories(categoriesRes.data)
+          setCachedData('categories', categoriesRes.data);
         } else if (Array.isArray(categoriesRes)) {
           setCategories(categoriesRes)
+          setCachedData('categories', categoriesRes);
         }
 
         setSelectedCategory(categoryFromUrl)

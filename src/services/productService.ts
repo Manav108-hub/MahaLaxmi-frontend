@@ -1,6 +1,23 @@
 import api from '@/lib/api'
 import { ApiResponse, Product, Category, ProductsResponse, CreateCategoryRequest } from '@/lib/types'
 
+// Simple browser cache
+const browserCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getCached = (key: string) => {
+  const cached = browserCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCache = (key: string, data: any) => {
+  browserCache.set(key, { data, timestamp: Date.now() });
+};
+
+// EXISTING FUNCTIONS - UNCHANGED
 const handleApiCall = async <T>(apiCall: () => Promise<any>): Promise<ApiResponse<T>> => {
   try {
     const response = await apiCall()
@@ -38,7 +55,18 @@ const sanitizeProduct = (product: any): Product => {
 
 export const productService = {
   async getCategories(): Promise<ApiResponse<Category[]>> {
-    return handleApiCall(() => api.get('/api/categories'))
+    // Check cache first
+    const cached = getCached('categories');
+    if (cached) return cached as ApiResponse<Category[]>;
+    
+    const result = await handleApiCall(() => api.get('/api/categories'));
+    
+    // Cache result if successful
+    if (result.success) {
+      setCache('categories', result);
+    }
+    
+    return result as ApiResponse<Category[]>;
   },
 
   async createCategory(categoryData: CreateCategoryRequest): Promise<ApiResponse<Category>> {
@@ -55,6 +83,11 @@ export const productService = {
     sortBy?: string
     sortOrder?: 'asc' | 'desc'
   }): Promise<ProductsResponse> {
+    // Check cache first
+    const cacheKey = `products_${JSON.stringify(params || {})}`;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+    
     try {
       const response = await api.get('/api/products', { params })
       
@@ -65,18 +98,28 @@ export const productService = {
       const products = response.data.data?.products || []
       const sanitizedProducts = products.map(sanitizeProduct)
 
-      return {
+      const result = {
         success: true,
         data: sanitizedProducts,
         products: sanitizedProducts,
         pagination: response.data.data?.pagination
-      }
+      };
+      
+      // Cache result
+      setCache(cacheKey, result);
+      
+      return result;
     } catch (error: any) {
       throw new Error(error.message || 'Failed to fetch products')
     }
   },
 
   async getProductById(id: string): Promise<Product> {
+    // Check cache first
+    const cacheKey = `product_${id}`;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+    
     try {
       const response = await api.get(`/api/product/${id}`)
       
@@ -84,13 +127,23 @@ export const productService = {
         throw new Error(response.data.error || 'Product not found')
       }
       
-      return sanitizeProduct(response.data.data)
+      const result = sanitizeProduct(response.data.data);
+      
+      // Cache result
+      setCache(cacheKey, result);
+      
+      return result;
     } catch (error: any) {
       throw new Error(error.message || 'Failed to fetch product')
     }
   },
 
   async getProductBySlug(slug: string): Promise<Product> {
+    // Check cache first
+    const cacheKey = `product_slug_${slug}`;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+    
     try {
       const response = await api.get(`/api/products/slug/${slug}`)
       
@@ -106,7 +159,10 @@ export const productService = {
         throw new Error('Invalid product data structure')
       }
       
-      return sanitizedProduct
+      // Cache result
+      setCache(cacheKey, sanitizedProduct);
+      
+      return sanitizedProduct;
     } catch (error: any) {
       throw new Error(error.message || 'Failed to fetch product')
     }
