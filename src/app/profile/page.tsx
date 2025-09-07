@@ -255,7 +255,7 @@ export default function ProfilePage() {
                   <Alert className="mb-6 border-red-200 bg-red-50 animate-in slide-in-from-top-2 duration-300" variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
-                      {updateProfile.error?.message || 'Failed to update profile. Please try again.'}
+                      {updateProfile.error || 'Failed to update profile. Please try again.'}
                     </AlertDescription>
                   </Alert>
                 )}
