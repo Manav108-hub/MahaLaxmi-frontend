@@ -11,16 +11,28 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
 
-  // Image optimization
+  // Image optimization - FIXED deprecated warning
   images: {
-    domains: ['mahalaxmi-test.s3.ap-south-1.amazonaws.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'mahalaxmi-test.s3.ap-south-1.amazonaws.com',
+        port: '',
+        pathname: '/**',
+      },
+    ],
     formats: ['image/webp', 'image/avif'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
 
   // Performance optimizations
   experimental: {
-    optimizePackageImports: ['lucide-react'],
+    optimizePackageImports: ['lucide-react', '@/components/ui'],
   },
+
+  // Enable compression
+  compress: true,
 
   // Caching headers for better performance
   async headers() {
@@ -43,8 +55,27 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on'
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN'
+          },
+        ],
+      },
     ];
   },
+
+  // Output optimization
+  output: 'standalone',
+  
+  // Reduce bundle size
+  swcMinify: true,
 };
 
 export default nextConfig;

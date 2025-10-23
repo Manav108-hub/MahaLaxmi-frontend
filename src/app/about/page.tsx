@@ -52,7 +52,7 @@ export default function AboutPage() {
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white">
       <div className="container mx-auto px-4 py-16">
         {/* Hero Section */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-16 fade-in">
           <h1 className="text-4xl md:text-5xl font-bold gradient-text mb-6">
             About MahaLaxmi Hardware
           </h1>
@@ -63,7 +63,7 @@ export default function AboutPage() {
         </div>
 
         {/* Story Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16 slide-in-up">
           <div>
             <h2 className="text-3xl font-bold text-gray-800 mb-6">Our Story</h2>
             <div className="space-y-4 text-gray-600">
@@ -84,13 +84,13 @@ export default function AboutPage() {
         </div>
 
         {/* Values Section */}
-        <div className="mb-16">
+        <div className="mb-16 slide-in-up">
           <h2 className="text-3xl font-bold text-gray-800 text-center mb-12">Our Values</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {companyValues.map((value, index) => {
               const IconComponent = value.icon
               return (
-                <Card key={index} className="glass-effect border-pink-200">
+                <Card key={index} className="glass-effect border-pink-200 hover:shadow-lg transition-shadow duration-300">
                   <CardContent className="p-6 text-center">
                     <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                       <IconComponent className="h-6 w-6 text-pink-600" />
@@ -105,7 +105,7 @@ export default function AboutPage() {
         </div>
 
         {/* Mission Section */}
-        <div className="text-center">
+        <div className="text-center slide-in-up">
           <h2 className="text-3xl font-bold text-gray-800 mb-6">Our Mission</h2>
           <div className="max-w-4xl mx-auto">
             <Card className="glass-effect border-pink-200">
@@ -113,7 +113,7 @@ export default function AboutPage() {
                 <p className="text-lg text-gray-700 leading-relaxed">
                   Our mission is to be the most trusted hardware partner in the region by providing 
                   high-quality products, competitive prices, and exceptional customer service. 
-                  We strive to support our community's construction and home improvement needs 
+                  We strive to support our community&apos;s construction and home improvement needs 
                   while building lasting relationships with our customers.
                 </p>
               </CardContent>

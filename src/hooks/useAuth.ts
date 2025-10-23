@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { authService } from '@/services/authService'
-import { User } from '@/lib/types'
+import { User, UserWithDetails } from '@/lib/types'
 
 // Simple cache for auth data
 const authCache = new Map<string, { data: unknown; timestamp: number }>()
@@ -257,6 +257,7 @@ export function useUpdateProfile() {
 export function useAuth() {
   const currentUser = useCurrentUser()
   const loginMutation = useLogin()
+  const profile = useProfile() 
   const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   const logout = useCallback(async () => {
@@ -276,6 +277,7 @@ export function useAuth() {
   return {
     user: currentUser.data,
     isLoading: currentUser.isLoading,
+    userProfile: profile.data as unknown as UserWithDetails,
     isAuthenticated: currentUser.isAuthenticated,
     login: loginMutation.mutateAsync,
     logout,

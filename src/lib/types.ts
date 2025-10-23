@@ -205,7 +205,7 @@ export interface AddToCartRequest {
   quantity: number;
 }
 
-export type PaymentMethod = 'COD' | 'ONLINE'
+export type PaymentMethod = 'ONLINE' | 'COD'
 
 export interface CreateOrderRequest {
   paymentMethod: PaymentMethod;

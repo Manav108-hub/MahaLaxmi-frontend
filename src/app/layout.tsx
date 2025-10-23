@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import { AppProviders } from '@/components/providers/AppProviders'
+import { ViewTransitions } from 'next-view-transitions'
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -21,18 +22,20 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.className}>
-      <body suppressHydrationWarning>
-        <AppProviders>
-          <div className="min-h-screen flex flex-col">
-            <Header />
-            <main className="flex-1">
-              {children}
-            </main>
-            <Footer />
-          </div>
-        </AppProviders>
-      </body>
-    </html>
+    <ViewTransitions>
+      <html lang="en" className={inter.className}>
+        <body suppressHydrationWarning>
+          <AppProviders>
+            <div className="min-h-screen flex flex-col">
+              <Header />
+              <main className="flex-1">
+                {children}
+              </main>
+              <Footer />
+            </div>
+          </AppProviders>
+        </body>
+      </html>
+    </ViewTransitions>
   )
 }

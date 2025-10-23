@@ -1,9 +1,10 @@
 'use client'
 
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { formatPrice } from '@/lib/utils'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 interface CartSummaryProps {
   cartItems: any[]
@@ -35,16 +36,24 @@ const SummaryDetails = memo(({ totalAmount }: { totalAmount: number }) => {
 SummaryDetails.displayName = 'SummaryDetails'
 
 // Memoized action buttons component
-const ActionButtons = memo(({ loading, hasItems }: { loading: boolean; hasItems: boolean }) => (
+const ActionButtons = memo(({ 
+  loading, 
+  hasItems, 
+  onProceedToOrder,
+  processingOrder 
+}: { 
+  loading: boolean
+  hasItems: boolean
+  onProceedToOrder: () => void
+  processingOrder: boolean
+}) => (
   <div className="mt-6 space-y-3">
     <Button 
-      asChild
+      onClick={onProceedToOrder}
       className="w-full bg-pink-500 hover:bg-pink-600"
-      disabled={loading || !hasItems}
+      disabled={loading || !hasItems || processingOrder}
     >
-      <Link href="/checkout">
-        Proceed to Checkout
-      </Link>
+      {processingOrder ? 'Processing...' : 'Place Order'}
     </Button>
     <Button 
       variant="outline" 
@@ -60,8 +69,32 @@ const ActionButtons = memo(({ loading, hasItems }: { loading: boolean; hasItems:
 ActionButtons.displayName = 'ActionButtons'
 
 function CartSummary({ cartItems, totalAmount, loading }: CartSummaryProps) {
+  const router = useRouter()
+  const [processingOrder, setProcessingOrder] = useState(false)
+  
   // Memoize calculated values
   const hasItems = useMemo(() => cartItems.length > 0, [cartItems.length])
+  
+  const handleProceedToOrder = () => {
+    if (!hasItems) return
+    
+    setProcessingOrder(true)
+    
+    // Store cart data in sessionStorage for the order page
+    const orderData = {
+      cartItems,
+      totalAmount,
+      timestamp: Date.now()
+    }
+    
+    sessionStorage.setItem('orderData', JSON.stringify(orderData))
+    
+    // Navigate to order page
+    router.push('/orders/place-order')
+    
+    // Reset processing state after navigation
+    setTimeout(() => setProcessingOrder(false), 1000)
+  }
   
   return (
     <div className="lg:sticky lg:top-24 max-w-md w-full">
@@ -70,7 +103,12 @@ function CartSummary({ cartItems, totalAmount, loading }: CartSummaryProps) {
         
         <SummaryDetails totalAmount={totalAmount} />
         
-        <ActionButtons loading={loading} hasItems={hasItems} />
+        <ActionButtons 
+          loading={loading} 
+          hasItems={hasItems}
+          onProceedToOrder={handleProceedToOrder}
+          processingOrder={processingOrder}
+        />
       </div>
     </div>
   )
