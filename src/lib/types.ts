@@ -124,6 +124,7 @@ export interface PaymentSession {
 }
 
 export interface ApiResponse<T = unknown> {
+  token: any;
   success: boolean;
   message?: string;
   data?: T;

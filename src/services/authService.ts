@@ -3,7 +3,7 @@ import { ApiResponse, User } from '@/lib/types'
 
 // Simple cache for auth data
 const authCache = new Map();
-const CACHE_TTL = 2 * 60 * 1000; // 2 minutes for auth data
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for auth data
 
 const getCachedAuth = (key: string) => {
   const cached = authCache.get(key);
@@ -43,55 +43,132 @@ export const authService = {
   async login(credentials: {
     username: string
     password: string
-  }): Promise<ApiResponse<{ user: User }>> {
+  }): Promise<ApiResponse<{
+    token: any; user: User 
+}>> {
     try {
       const response = await api.post('/api/login', credentials)
       
-      // Cache successful login result
+      console.log('Login API Response:', response.data)
+      
+      // Handle different response structures
+      let userData;
       if (response.data.success) {
-        setCachedAuth('currentUser', response.data);
+        userData = response.data.data?.user || response.data.data || response.data.user
+      } else {
+        userData = response.data.user || response.data.data
       }
       
-      return response.data
+      if (userData) {
+        // Store in localStorage immediately
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('user', JSON.stringify(userData))
+          localStorage.setItem('isAuthenticated', 'true')
+        }
+        
+        // Cache it
+        setCachedAuth('currentUser', userData);
+      }
+      
+      return {
+        success: response.data.success !== false,
+        data: { user: userData },
+        message: response.data.message || 'Login successful'
+      }
     } catch (error: any) {
+      console.error('Login API Error:', error)
       return createErrorResponse<{ user: User }>(error, 'Login failed')
     }
   },
 
   async getCurrentUser(): Promise<ApiResponse<User>> {
     try {
-      // Check cache first
+      // Check localStorage first for immediate response
+      if (typeof window !== 'undefined') {
+        const storedUser = localStorage.getItem('user')
+        const isAuthenticated = localStorage.getItem('isAuthenticated')
+        
+        if (storedUser && isAuthenticated === 'true') {
+          try {
+            const user = JSON.parse(storedUser)
+            return {
+              success: true,
+              data: user,
+              message: 'User data retrieved from storage'
+            }
+          } catch (e) {
+            localStorage.removeItem('user')
+            localStorage.removeItem('isAuthenticated')
+          }
+        }
+      }
+      
+      // Check cache
       const cached = getCachedAuth('currentUser');
-      if (cached && cached.data) {
+      if (cached) {
         return {
           success: true,
-          data: cached.data,
-          message: 'User data retrieved successfully'
+          data: cached,
+          message: 'User data retrieved from cache'
         };
       }
       
+      // Only fetch from API if we think user should be authenticated
+      if (typeof window !== 'undefined' && !localStorage.getItem('isAuthenticated')) {
+        return { success: false, error: 'Not authenticated' }
+      }
+      
+      // Fetch from API
       const response = await api.get('/api/me')
       const userData = response.data.data || response.data
       
-      const result = {
+      // Store in localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(userData))
+        localStorage.setItem('isAuthenticated', 'true')
+      }
+      
+      // Cache the result
+      setCachedAuth('currentUser', userData);
+      
+      return {
         success: true,
         data: userData,
         message: 'User data retrieved successfully'
       };
-      
-      // Cache the result
-      setCachedAuth('currentUser', result);
-      
-      return result;
     } catch (error: any) {
       if (error.response?.status === 401) {
+        // Clear storage on unauthorized
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('user')
+          localStorage.removeItem('isAuthenticated')
+        }
         return { success: false, error: 'Not authenticated' }
       }
+      
+      // For other errors, if we have cached user, return it
+      if (typeof window !== 'undefined') {
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          try {
+            return {
+              success: true,
+              data: JSON.parse(storedUser),
+              message: 'Using cached user data'
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+      
       return createErrorResponse<User>(error, 'Failed to get current user')
     }
   },
 
-  async getProfile(): Promise<ApiResponse<{ user: User }>> {
+  async getProfile(): Promise<ApiResponse<{
+    token: string | null; user: User 
+}>> {
     try {
       // Check cache first
       const cached = getCachedAuth('profile');
@@ -108,7 +185,6 @@ export const authService = {
           message: 'Profile retrieved successfully'
         };
       } else {
-        // If the response structure is different, try to extract the user data
         const userData = response.data.user || response.data.data || response.data
         
         result = {
@@ -138,9 +214,7 @@ export const authService = {
     try {
       const response = await api.post('/api/user-details', userData)
       
-      // Handle the response properly
       if (response.data.success) {
-        // If the API returns the updated user data
         const updatedUser = response.data.data || response.data.user
         
         const result = {
@@ -149,14 +223,18 @@ export const authService = {
           message: response.data.message || 'Profile updated successfully'
         };
         
+        // Update localStorage
+        if (typeof window !== 'undefined' && updatedUser) {
+          localStorage.setItem('user', JSON.stringify(updatedUser))
+        }
+        
         // Clear cache when profile is updated
         authCache.clear();
         
         return result;
       }
       
-      // If success is not explicitly true but we got a 200 response
-      authCache.clear(); // Clear cache on update
+      authCache.clear();
       return response.data
     } catch (error: any) {
       return createErrorResponse<{ user: User }>(error, 'Failed to update profile')
@@ -174,6 +252,7 @@ export const authService = {
       
       if (typeof window !== 'undefined') {
         localStorage.removeItem('user')
+        localStorage.removeItem('isAuthenticated')
         setTimeout(() => window.location.href = '/login', 100)
       }
     }

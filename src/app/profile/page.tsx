@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, memo, useCallback, useMemo } from 'react'
-import { useProfile, useUpdateProfile } from '@/hooks/useAuth'
+import { useAuth, useProfile, useUpdateProfile } from '@/hooks/useAuth'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -145,6 +146,17 @@ const InputField = memo(({
 InputField.displayName = 'InputField'
 
 export default function ProfilePage() {
+  // ✅ ADD AUTH CHECK HERE - This protects the page
+  const { isAuthenticated, isLoading: authLoading } = useAuth(true)
+  const router = useRouter()
+
+  // ✅ Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login')
+    }
+  }, [isAuthenticated, authLoading, router])
+
   const { data: user, isLoading, error } = useProfile()
   const updateProfile = useUpdateProfile()
   
@@ -202,6 +214,11 @@ export default function ProfilePage() {
       console.error('Profile update error:', error)
     }
   }, [formData, updateProfile])
+
+  // ✅ Check auth loading first
+  if (authLoading || !isAuthenticated) {
+    return <LoadingState />
+  }
 
   if (isLoading) return <LoadingState />
   if (error) return <ErrorState />

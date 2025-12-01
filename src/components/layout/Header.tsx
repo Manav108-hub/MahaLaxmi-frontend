@@ -24,7 +24,8 @@ const navigationCache = [
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { logout, isAuthenticated } = useAuth()
+  // Pass false to useAuth - we don't require auth in the header
+  const { logout, isAuthenticated } = useAuth(false)
   const { getTotalItems } = useCart()
 
   // Memoize cart count to prevent unnecessary re-renders

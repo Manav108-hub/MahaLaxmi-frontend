@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -9,45 +9,61 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react'
-import { authService } from '@/services/authService'
 import { useAuth } from '@/hooks/useAuth'
 
 type FormData = { username: string; password: string }
 
 export default function LoginPage() {
+  const router = useRouter()
   const [formData, setFormData] = useState<FormData>({ username: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const router = useRouter()
-  const { login } = useAuth()
+  const [isMounted, setIsMounted] = useState(false)
+  const { login, isLoggingIn, error, isAuthenticated } = useAuth()
 
+  // Fix hydration by only rendering on client
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('user')
-    }
+    setIsMounted(true)
   }, [])
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard')
+    }
+  }, [isAuthenticated, router])
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
-    setError('')
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    try {
-      await login(formData)
-      router.push('/')
-    } catch (err: any) {
-      const error = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please try again.'
-      setError(error)
-    } finally {
-      setLoading(false)
+    
+    const credentials = {
+      username: formData.username,
+      password: formData.password,
     }
+    
+    try {
+      await login(credentials)
+      // The useEffect above will handle redirect when isAuthenticated becomes true
+    } catch (err) {
+      console.error('Login error:', err)
+    }
+  }
+
+  // Show loading state during hydration
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold gradient-text mb-2">Loading...</h1>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -84,8 +100,10 @@ export default function LoginPage() {
                     placeholder="Enter your username"
                     value={formData.username}
                     onChange={handleInputChange}
-                    className="pl-10 pr-10 border-pink-200 focus:border-pink-500 focus:ring-pink-500"
+                    className="pl-10 border-pink-200 focus:border-pink-500 focus:ring-pink-500"
                     required
+                    disabled={isLoggingIn}
+                    autoComplete="username"
                   />
                   <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                 </div>
@@ -103,12 +121,15 @@ export default function LoginPage() {
                     onChange={handleInputChange}
                     className="pl-10 pr-10 border-pink-200 focus:border-pink-500 focus:ring-pink-500"
                     required
+                    disabled={isLoggingIn}
+                    autoComplete="current-password"
                   />
                   <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                    disabled={isLoggingIn}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -121,20 +142,25 @@ export default function LoginPage() {
                     id="remember"
                     type="checkbox"
                     className="rounded border-pink-300 text-pink-600 focus:ring-pink-500"
+                    disabled={isLoggingIn}
                   />
                   <Label htmlFor="remember" className="text-sm text-gray-600">Remember me</Label>
                 </div>
-                <Link href="/forgot-password" className="text-sm text-pink-600 hover:text-pink-700 hover:underline">
+                <Link 
+                  href="/forgot-password" 
+                  className="text-sm text-pink-600 hover:text-pink-700 hover:underline"
+                  tabIndex={isLoggingIn ? -1 : 0}
+                >
                   Forgot password?
                 </Link>
               </div>
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={isLoggingIn}
                 className="w-full bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white shadow-lg"
               >
-                {loading ? (
+                {isLoggingIn ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                     Signing in...
@@ -152,7 +178,11 @@ export default function LoginPage() {
             <div className="w-full text-center">
               <p className="text-gray-600">
                 Don't have an account?{' '}
-                <Link href="/register" className="text-pink-600 hover:text-pink-700 font-medium hover:underline">
+                <Link 
+                  href="/register" 
+                  className="text-pink-600 hover:text-pink-700 font-medium hover:underline"
+                  tabIndex={isLoggingIn ? -1 : 0}
+                >
                   Sign up here
                 </Link>
               </p>
