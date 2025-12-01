@@ -17,6 +17,7 @@ export function useCart() {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const mounted = useRef(true)
   const fetching = useRef(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const prevAuth = useRef(isAuthenticated)
 
   useEffect(() => () => { mounted.current = false }, [])
@@ -42,7 +43,8 @@ export function useCart() {
 
       if (!res.success) throw new Error(res.error ?? 'Failed to fetch cart')
       
-      const items = Array.isArray(res.data) ? res.data : res.data?.items ?? []
+      // Handle different response formats: res.data may be an array or an object { items, ... }
+      const items: CartItem[] = Array.isArray(res.data) ? res.data : res.data?.items ?? []
       safeSetState(prev => ({ ...prev, items, error: null }))
     } catch (err) {
       if (!mounted.current) return
@@ -60,84 +62,12 @@ export function useCart() {
     }
   }, [isAuthenticated, authLoading, safeSetState])
 
-  // Fixed: Added fetchCart to dependency array and improved initial load logic
-  useEffect(() => {
-    const authChanged = prevAuth.current !== isAuthenticated
-    prevAuth.current = isAuthenticated
-
-    if (!authLoading) {
-      if (authChanged || (isAuthenticated && state.items.length === 0)) {
-        fetchCart()
-      }
-    }
-  }, [isAuthenticated, authLoading, fetchCart, state.items.length])
-
-  // Fixed: Force initial cart fetch when component mounts and user is authenticated
+  // Initial load when authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
       fetchCart()
     }
   }, [authLoading, isAuthenticated, fetchCart])
-
-  const createCartAction = useCallback(
-    <T extends any[]>(
-      action: (...args: T) => Promise<any>,
-      successMsg: string,
-      errorMsg: string,
-      optimisticUpdate?: (prev: CartState, ...args: T) => CartState
-    ) => async (...args: T) => {
-      if (!isAuthenticated) {
-        toast.error('Please login to modify cart')
-        return { success: false, message: 'User not authenticated' }
-      }
-
-      try {
-        if (optimisticUpdate) safeSetState(prev => optimisticUpdate(prev, ...args))
-        
-        const res = await action(...args)
-        
-        if (!res.success) {
-          toast.error(res.message ?? errorMsg)
-          // Always refresh after failed optimistic update
-          await fetchCart()
-          return res
-        }
-
-        // Update local state immediately and fetch in background
-        if (optimisticUpdate) {
-          safeSetState(prev => optimisticUpdate(prev, ...args))
-        }
-        toast.success(successMsg)
-        fetchCart()
-        return res
-      } catch (err) {
-        const error = err instanceof Error ? err.message : errorMsg
-        if (!error.includes('401')) {
-          toast.error(errorMsg)
-          safeSetState(prev => ({ ...prev, error: errorMsg }))
-        }
-        // Refresh cart on error to sync state
-        setTimeout(() => fetchCart(), 100)
-        throw err
-      }
-    },
-    [isAuthenticated, fetchCart, safeSetState]
-  )
-
-  const updateQuantity = createCartAction(
-    (itemId: string, quantity: number) => 
-      quantity < 1 
-        ? Promise.resolve({ success: false, message: 'Quantity must be at least 1' })
-        : cartService.updateCartItem(itemId, quantity),
-    'Cart updated',
-    'Failed to update cart',
-    (prev, itemId: string, quantity: number) => ({
-      ...prev,
-      items: prev.items.map(item => 
-        item.id === itemId ? { ...item, quantity } : item
-      )
-    })
-  )
 
   const addToCart = useCallback(async (productId: string, quantity = 1) => {
     if (!isAuthenticated) {
@@ -146,56 +76,99 @@ export function useCart() {
     }
 
     try {
-      // Check if item already exists in cart
-      const existingItem = state.items.find(item => item.productId === productId)
-      
-      if (existingItem) {
-        // If item exists, update its quantity instead
-        const newQuantity = existingItem.quantity + quantity
-        return await updateQuantity(existingItem.id, newQuantity)
-      }
-
       const res = await cartService.addToCart(productId, quantity)
       
-      if (!res.success || !res.data) {
+      if (!res.success) {
         toast.error(res.message ?? 'Failed to add item to cart')
         return res
       }
 
-      // Optimistically update local state
-      const newItem: CartItem = {
-        id: res.data.id,
-        productId,
-        quantity,
-        product: res.data.product,
-        userId: res.data.userId,
-        createdAt: res.data.createdAt,
-        updatedAt: res.data.updatedAt
-      }
-
-      safeSetState(prev => ({
-        ...prev,
-        items: [...prev.items, newItem]
-      }))
-      
+      // ✅ FIX: Immediately refresh cart after successful add
       toast.success('Item added to cart')
+      await fetchCart() // This will update the UI immediately
+      
       return res
     } catch (err) {
       const error = err instanceof Error ? err.message : 'Failed to add item to cart'
       toast.error(error)
       throw err
     }
-  }, [isAuthenticated, state.items, updateQuantity])
+  }, [isAuthenticated, fetchCart])
 
-  const removeItem = createCartAction(
-    (itemId: string) => cartService.removeFromCart(itemId),
-    'Item removed',
-    'Failed to remove item',
-    (prev, itemId: string) => ({
-      ...prev,
-      items: prev.items.filter(item => item.id !== itemId)
-    })
-  )
+  const updateQuantity = useCallback(async (itemId: string, quantity: number) => {
+    if (!isAuthenticated) {
+      toast.error('Please login to modify cart')
+      return { success: false, message: 'User not authenticated' }
+    }
+
+    if (quantity < 1) {
+      return { success: false, message: 'Quantity must be at least 1' }
+    }
+
+    try {
+      // ✅ FIX: Optimistic update for better UX
+      safeSetState(prev => ({
+        ...prev,
+        items: prev.items.map(item => 
+          item.id === itemId ? { ...item, quantity } : item
+        )
+      }))
+
+      const res = await cartService.updateCartItem(itemId, quantity)
+      
+      if (!res.success) {
+        toast.error(res.message ?? 'Failed to update cart')
+        // Revert optimistic update by refetching
+        await fetchCart()
+        return res
+      }
+
+      toast.success('Cart updated')
+      // Refresh to ensure consistency
+      await fetchCart()
+      
+      return res
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Failed to update cart'
+      toast.error(error)
+      // Revert on error
+      await fetchCart()
+      throw err
+    }
+  }, [isAuthenticated, fetchCart, safeSetState])
+
+  const removeItem = useCallback(async (itemId: string) => {
+    if (!isAuthenticated) {
+      toast.error('Please login to modify cart')
+      return { success: false, message: 'User not authenticated' }
+    }
+
+    try {
+      // ✅ FIX: Optimistic update
+      safeSetState(prev => ({
+        ...prev,
+        items: prev.items.filter(item => item.id !== itemId)
+      }))
+
+      const res = await cartService.removeFromCart(itemId)
+      
+      if (!res.success) {
+        toast.error(res.message ?? 'Failed to remove item')
+        await fetchCart()
+        return res
+      }
+
+      toast.success('Item removed')
+      await fetchCart()
+      
+      return res
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Failed to remove item'
+      toast.error(error)
+      await fetchCart()
+      throw err
+    }
+  }, [isAuthenticated, fetchCart, safeSetState])
 
   const derived = useMemo(() => {
     const totalAmount = state.items.reduce((sum, item) => sum + (item.product?.price || 0) * item.quantity, 0)

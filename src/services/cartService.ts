@@ -3,13 +3,16 @@ import { ApiResponse, CartItem } from "@/lib/types";
 
 // Cart cache implementation
 class CartCache {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private cache = new Map<string, { data: any; timestamp: number }>();
-  private ttl = 2 * 60 * 1000; // 2 minutes for cart data (shorter due to frequent changes)
+  private ttl = 30 * 1000; // 30 seconds - shorter for immediate updates
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set(key: string, data: any): void {
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(key: string): any | null {
     const cached = this.cache.get(key);
     if (!cached) return null;
@@ -38,16 +41,20 @@ class CartCache {
 const cartCache = new CartCache();
 
 const handleApiCall = async <T>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apiCall: () => Promise<any>
 ): Promise<ApiResponse<T>> => {
   try {
     const response = await apiCall();
+    // ✅ FIX: Return the response.data directly
     return response.data as ApiResponse<T>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
+    console.error('Cart API error:', error);
     return {
       success: false,
-      error: error.response?.data?.message || "Request failed",
-      message: error.response?.data?.message || "Request failed",
+      error: error.response?.data?.error || error.response?.data?.message || "Request failed",
+      message: error.response?.data?.error || error.response?.data?.message || "Request failed",
     } as ApiResponse<T>;
   }
 };
@@ -61,7 +68,7 @@ export const cartService = {
       api.post("/api/cart", { productId, quantity })
     );
 
-    // Clear cart cache when items are added
+    // ✅ FIX: Clear cache immediately after adding
     if (result.success) {
       cartCache.clear();
     }
@@ -76,13 +83,12 @@ export const cartService = {
       totalItems: number;
     }>
   > {
-    const cacheKey = "cart_data";
-
-    // Check cache first
-    const cached = cartCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
+    // ✅ FIX: Don't use cache for cart data to ensure fresh data
+    // const cacheKey = "cart_data";
+    // const cached = cartCache.get(cacheKey);
+    // if (cached) {
+    //   return cached;
+    // }
 
     const result = await handleApiCall<{
       items: CartItem[];
@@ -90,10 +96,10 @@ export const cartService = {
       totalItems: number;
     }>(() => api.get("/api/cart"));
 
-    // Cache successful responses
-    if (result.success) {
-      cartCache.set(cacheKey, result);
-    }
+    // Cache successful responses briefly
+    // if (result.success) {
+    //   cartCache.set(cacheKey, result);
+    // }
 
     return result;
   },
@@ -106,7 +112,7 @@ export const cartService = {
       api.put(`/api/cart/${itemId}`, { quantity })
     );
 
-    // Clear cart cache when items are updated
+    // ✅ FIX: Clear cache immediately after updating
     if (result.success) {
       cartCache.clear();
     }
@@ -114,12 +120,14 @@ export const cartService = {
     return result;
   },
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async removeFromCart(itemId: string): Promise<ApiResponse<any>> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await handleApiCall<any>(() =>
       api.delete(`/api/cart/${itemId}`)
     );
 
-    // Clear cart cache when items are removed
+    // ✅ FIX: Clear cache immediately after removing
     if (result.success) {
       cartCache.clear();
     }
@@ -129,23 +137,22 @@ export const cartService = {
 
   async getSelectedCartItems(
     cartItemIds: string[]
-  ): Promise<ApiResponse<CartItem[]>> {
-    const cacheKey = `selected_items_${JSON.stringify(cartItemIds.sort())}`;
-
-    // Check cache first
-    const cached = cartCache.get(cacheKey);
-    if (cached) {
-      return cached;
+  ): Promise<ApiResponse<{
+    cartItems: CartItem[];
+    summary: {
+      selectedItemsCount: number;
+      totalItems: number;
+      totalAmount: number;
     }
-
-    const result = await handleApiCall<CartItem[]>(() =>
-      api.post("/api/cart/selected", { cartItemIds })
-    );
-
-    // Cache successful responses for selected items
-    if (result.success) {
-      cartCache.set(cacheKey, result);
-    }
+  }>> {
+    const result = await handleApiCall<{
+      cartItems: CartItem[];
+      summary: {
+        selectedItemsCount: number;
+        totalItems: number;
+        totalAmount: number;
+      }
+    }>(() => api.post("/api/cart/selected", { cartItemIds }));
 
     return result;
   },
